@@ -6,7 +6,7 @@ A rewrite of the Python version of assembling overlapping clusters. Currently, i
 ## Getting Started
 
 Install (TODO: add installation instructions) the `aocluster` binary first, then
-run the following command for AOC_k ($k = 10$):
+run the following command for AOC_k with $k = 10$:
 
 ```bash
 aocluster augment -g edgelistgraph.tsv -c existing_clustering.txt --mode k --min-k 10 -o output.txt
