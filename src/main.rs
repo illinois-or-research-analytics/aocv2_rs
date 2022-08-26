@@ -25,6 +25,7 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum SubCommand {
+    /// Augment an existing disjoint cluster
     Augment {
         /// Path to the edgelist graph
         #[clap(short, long)]
@@ -40,10 +41,12 @@ enum SubCommand {
         output: PathBuf,
     },
 
+    /// Pack an existing (large) graph into an internal binary format for speed
     Pack {
         /// Path to the edgelist graph
         #[clap(short, long)]
         graph: PathBuf,
+        /// Output path for the preprocessed graph, recommended suffix is `.bincode.lz4`
         #[clap(short, long)]
         output: PathBuf,
     },
