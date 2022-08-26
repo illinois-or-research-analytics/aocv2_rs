@@ -1,21 +1,26 @@
-use ahash::{AHashMap, AHashSet};
+use crate::utils::{self, NameSet};
+use ahash::AHashSet;
+use anyhow::Ok;
 use itertools::Itertools;
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{hash_set, BTreeMap, BTreeSet},
+    ffi::OsStr,
     fs::File,
     io::{BufRead, BufReader, BufWriter, Read, Write},
     path::Path,
 };
 use tracing::debug;
-use ustr::{Ustr, UstrMap};
 
 pub trait AbstractNode {
+    //! A trait for nodes in a graph.
     fn assign_id(&mut self, id: usize);
     fn add_out_edge(&mut self, target: usize);
     fn add_in_edge(&mut self, from: usize);
 }
 
+/// A trait for a specific subset of a graph.
 pub trait AbstractSubset<'a> {
     fn contains(&self, node_id: &usize) -> bool;
     type NodeIterator: Iterator<Item = &'a usize>;
@@ -46,7 +51,8 @@ impl AbstractNode for TransientNode {
     }
 }
 
-#[derive(Default, Debug)]
+/// The default node type, contains information  both the directed and the undirected topology
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Node {
     pub id: usize,
     pub in_edges: Vec<usize>,
@@ -106,13 +112,12 @@ impl TransientNode {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Graph<NodeT>
 where
     NodeT: Default + AbstractNode,
 {
-    id2name: Vec<String>,
-    name2id: AHashMap<String, usize>,
+    name_set: NameSet,
     pub nodes: Vec<NodeT>,
     m_cache: usize,
 }
@@ -121,24 +126,25 @@ impl<'a, NodeT> Graph<NodeT>
 where
     NodeT: Default + AbstractNode,
 {
-    pub fn request(&mut self, s: &'a str) -> usize {
-        let id = self.name2id.get(s);
-        match id {
-            Some(id) => *id,
-            None => {
-                let id = self.nodes.len();
-                self.name2id.insert(String::from(s), id);
-                self.id2name.push(String::from(s));
+    pub fn request(&mut self, s: &str) -> usize {
+        return self
+            .name_set
+            .bimap
+            .get_by_left(s)
+            .copied()
+            .unwrap_or_else(|| {
+                let id = self.name_set.next_id;
+                self.name_set.next_id += 1;
+                self.name_set.bimap.insert(s.to_string(), id);
                 let mut node = NodeT::default();
                 node.assign_id(id);
                 self.nodes.push(node);
-                return id;
-            }
-        }
+                id
+            });
     }
 
     pub fn retrieve(&self, s: &str) -> Option<usize> {
-        self.name2id.get(s).copied()
+        self.name_set.retrieve(s)
     }
 
     pub fn n(&self) -> usize {
@@ -169,18 +175,34 @@ impl Graph<Node> {
                 debug!("progress: {}", progress);
             }
         }
-        let permanent_nodes: Vec<Node> = graph
-            .nodes
-            .into_par_iter()
-            .map(|node| node.into_permanent())
-            .collect();
+        let (permanent_nodes, name_set) = (
+            graph
+                .nodes
+                .into_iter()
+                .map(|node| node.into_permanent())
+                .collect_vec(),
+            graph.name_set,
+        );
         let num_edges = permanent_nodes.iter().map(|n| n.edges.len()).sum::<usize>() / 2;
         Ok(Graph {
-            id2name: graph.id2name,
-            name2id: graph.name2id,
+            name_set,
             nodes: permanent_nodes,
             m_cache: num_edges,
         })
+    }
+
+    pub fn parse_from_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Graph<Node>> {
+        if path.as_ref().extension() == Some(OsStr::new("lz4")) {
+            debug!("loading from bincode.lz4");
+            Self::parse_compressed_bincode(path)
+        } else {
+            debug!("loading from edgelist");
+            Self::parse_edgelist(path)
+        }
+    }
+
+    pub fn parse_compressed_bincode<P: AsRef<Path>>(path: P) -> anyhow::Result<Graph<Node>> {
+        utils::read_compressed_bincode(path)
     }
 
     pub fn parse_edgelist<P>(path: P) -> anyhow::Result<Graph<Node>>
@@ -282,7 +304,7 @@ impl<'a> AbstractSubset<'a> for ClusterView<'a> {
             ClusterViewType::Core => self.cluster.core_nodes.iter(),
             ClusterViewType::Periphery => self.cluster.periphery_nodes.iter(),
             ClusterViewType::All => {
-                panic!("not implemented");
+                panic!("not implemented"); // FIXME: we might need to just resort to dynamic dispatch
             }
         }
     }
@@ -328,9 +350,9 @@ impl Clustering {
             let mut parts = line.split_whitespace();
             let cluster_id: usize = parts
                 .next()
-                .ok_or_else(|| anyhow::anyhow!("missing from"))?
+                .ok_or_else(|| anyhow::anyhow!("missing cluster_id"))?
                 .parse()?;
-            let node_name = parts.next().ok_or_else(|| anyhow::anyhow!("missing to"))?;
+            let node_name = parts.next().ok_or_else(|| anyhow::anyhow!("missing node_name"))?;
             let node_id = bg
                 .retrieve(node_name)
                 .ok_or_else(|| anyhow::anyhow!("node {} not found", node_name))?;
@@ -358,7 +380,12 @@ impl Clustering {
                 .iter()
                 .chain(cluster.periphery_nodes.iter())
             {
-                writeln!(writer, "{} {}", cluster_id, graph.id2name[*node_id])?;
+                writeln!(
+                    writer,
+                    "{} {}",
+                    cluster_id,
+                    graph.name_set.rev(*node_id).unwrap()
+                )?;
             }
         }
         Ok(())
