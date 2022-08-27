@@ -51,6 +51,7 @@ dependencies = [
  "clap",
  "itertools",
  "lz4",
+ "num_cpus",
  "rayon",
  "serde",
  "tracing",

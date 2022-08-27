@@ -57,6 +57,10 @@ fn main() -> anyhow::Result<()> {
     let starting = now;
     tracing_subscriber::fmt::init();
     let args = Args::parse();
+    let num_cpu = num_cpus::get_physical().min(4);
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(num_cpu)
+        .build_global()?;
     match args.cmd {
         SubCommand::Augment {
             graph,
