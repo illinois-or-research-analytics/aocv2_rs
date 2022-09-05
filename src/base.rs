@@ -24,7 +24,7 @@ pub trait AbstractNode {
 pub trait AbstractSubset<'a> {
     fn contains(&self, node_id: &usize) -> bool;
     type NodeIterator: Iterator<Item = &'a usize>;
-    fn each_node_id(&self) -> Self::NodeIterator;
+    fn each_node_id(&'a self) -> Self::NodeIterator;
 }
 
 #[derive(Default, Debug)]
@@ -274,12 +274,19 @@ impl Cluster {
     pub fn is_non_trivial(&self) -> bool {
         self.size() > 1
     }
+
+    pub fn from_iter(iter: impl IntoIterator<Item = usize>) -> Cluster {
+        let mut cluster = Cluster::default();
+        for node in iter {
+            cluster.add_core(node);
+        }
+        cluster
+    }
 }
 
 pub enum ClusterViewType {
     Core,
     Periphery,
-    All,
 }
 
 pub struct ClusterView<'a> {
@@ -287,25 +294,40 @@ pub struct ClusterView<'a> {
     pub view_type: ClusterViewType,
 }
 
+pub struct ClusterEntireView<'a> {
+    pub cluster: &'a Cluster,
+}
+
+impl<'a> AbstractSubset<'a> for ClusterEntireView<'a> {
+    fn contains(&self, node_id: &usize) -> bool {
+        self.cluster.core_nodes.contains(node_id) || self.cluster.periphery_nodes.contains(node_id)
+    }
+
+    fn each_node_id(&'a self) -> Self::NodeIterator {
+        self.cluster
+            .core_nodes
+            .iter()
+            .chain(self.cluster.periphery_nodes.iter())
+    }
+
+    type NodeIterator = std::iter::Chain<
+        std::collections::hash_set::Iter<'a, usize>,
+        std::collections::hash_set::Iter<'a, usize>,
+    >;
+}
+
 impl<'a> AbstractSubset<'a> for ClusterView<'a> {
     fn contains(&self, node: &usize) -> bool {
         match self.view_type {
             ClusterViewType::Core => self.cluster.core_nodes.contains(node),
             ClusterViewType::Periphery => self.cluster.periphery_nodes.contains(node),
-            ClusterViewType::All => {
-                self.cluster.core_nodes.contains(node)
-                    || self.cluster.periphery_nodes.contains(node)
-            }
         }
     }
 
-    fn each_node_id(&self) -> Self::NodeIterator {
+    fn each_node_id(&'a self) -> Self::NodeIterator {
         match self.view_type {
             ClusterViewType::Core => self.cluster.core_nodes.iter(),
             ClusterViewType::Periphery => self.cluster.periphery_nodes.iter(),
-            ClusterViewType::All => {
-                panic!("not implemented"); // FIXME: we might need to just resort to dynamic dispatch
-            }
         }
     }
 
@@ -327,11 +349,8 @@ impl<'a> Cluster {
         }
     }
 
-    pub fn all(&'a self) -> ClusterView<'a> {
-        ClusterView {
-            cluster: self,
-            view_type: ClusterViewType::All,
-        }
+    pub fn all(&'a self) -> ClusterEntireView<'a> {
+        ClusterEntireView { cluster: self }
     }
 }
 
@@ -352,7 +371,9 @@ impl Clustering {
                 .next()
                 .ok_or_else(|| anyhow::anyhow!("missing cluster_id"))?
                 .parse()?;
-            let node_name = parts.next().ok_or_else(|| anyhow::anyhow!("missing node_name"))?;
+            let node_name = parts
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("missing node_name"))?;
             let node_id = bg
                 .retrieve(node_name)
                 .ok_or_else(|| anyhow::anyhow!("node {} not found", node_name))?;

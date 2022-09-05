@@ -1,14 +1,20 @@
 mod aoc;
 mod base;
+mod misc;
+mod quality;
 mod utils;
-use std::path::PathBuf;
+use std::io::{BufRead, BufWriter};
 use std::time::Instant;
+use std::{io::BufReader, path::PathBuf};
 
 use aoc::{augment_clusters, AocConfig};
 pub use base::*;
 use clap::{ArgEnum, Parser, Subcommand};
 use itertools::Itertools;
 use tracing::{info, warn};
+
+use crate::misc::NodeList;
+use crate::quality::ClusterInformation;
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum, Debug)]
 pub enum AocMode {
@@ -37,6 +43,8 @@ enum SubCommand {
         min_k: Option<usize>,
         #[clap(short, long, arg_enum)]
         mode: AocMode,
+        #[clap(long)]
+        candidates: Option<PathBuf>,
         #[clap(short, long)]
         output: PathBuf,
     },
@@ -47,6 +55,22 @@ enum SubCommand {
         #[clap(short, long)]
         graph: PathBuf,
         /// Output path for the preprocessed graph, recommended suffix is `.bincode.lz4`
+        #[clap(short, long)]
+        output: PathBuf,
+    },
+
+    /// Calculate statistics for a given clustering/cluster
+    Stats {
+        /// Path to the edgelist graph
+        #[clap(short, long)]
+        graph: PathBuf,
+        /// Path to the clusters/cluster file
+        #[clap(short, long)]
+        clusters: PathBuf,
+        /// If the given cluster file is only a newline separated node-list denoting one cluster
+        #[clap(short, long)]
+        single: bool,
+        /// Output path for the statistics
         #[clap(short, long)]
         output: PathBuf,
     },
@@ -67,6 +91,7 @@ fn main() -> anyhow::Result<()> {
             clustering,
             min_k,
             mode,
+            candidates,
             output,
         } => {
             let config = {
@@ -76,7 +101,12 @@ fn main() -> anyhow::Result<()> {
                 }
             };
             let graph = Graph::parse_from_file(&graph)?;
-            info!("Graph loaded in {:?}", now.elapsed());
+            info!(
+                n = graph.n(),
+                m = graph.m(),
+                "Graph loaded in {:?}",
+                now.elapsed()
+            );
             let now = Instant::now();
             let mut clustering = Clustering::parse_from_file(&graph, &clustering)?;
             info!("Clustering loaded in {:?}", now.elapsed());
@@ -91,14 +121,24 @@ fn main() -> anyhow::Result<()> {
             );
 
             let now = Instant::now();
-            let mut candidates = clustering
-                .clusters
-                .values()
-                .into_iter()
-                .flat_map(|cluster| cluster.core_nodes.iter())
-                .copied()
-                .collect_vec();
-            info!("Candidates built in {:?}", now.elapsed());
+            let mut candidates = match candidates {
+                None => clustering
+                    .clusters
+                    .values()
+                    .into_iter()
+                    .flat_map(|cluster| cluster.core_nodes.iter())
+                    .copied()
+                    .collect_vec(),
+                Some(p) => BufReader::new(std::fs::File::open(p)?)
+                    .lines()
+                    .map(|l| graph.retrieve(l.unwrap().trim()).unwrap())
+                    .collect_vec(),
+            };
+            info!(
+                "Candidates ({} of them) loaded in {:?}",
+                candidates.len(),
+                now.elapsed()
+            );
             let now = Instant::now();
             augment_clusters(&graph, &mut clustering, &mut candidates, config);
             info!("Clusters augmented in {:?}", now.elapsed());
@@ -115,8 +155,35 @@ fn main() -> anyhow::Result<()> {
             let graph = Graph::parse_edgelist(&graph)?;
             utils::write_compressed_bincode(output, &graph)?;
         }
+        SubCommand::Stats {
+            graph,
+            clusters,
+            single,
+            output,
+        } => {
+            let graph = Graph::parse_from_file(&graph)?;
+            info!(
+                n = graph.n(),
+                m = graph.m(),
+                "Graph loaded in {:?}",
+                now.elapsed()
+            );
+            let entries = if single {
+                let subset = NodeList::from_raw_file(&graph, &clusters)?.into_owned_subset();
+                let ci = ClusterInformation::from_single_cluster(&graph, &subset);
+                vec![ci]
+            } else {
+                let clustering = Clustering::parse_from_file(&graph, &clusters)?;
+                ClusterInformation::vec_from_clustering(&graph, &clustering)
+            };
+            let buf_writer = BufWriter::new(std::fs::File::create(output)?);
+            let mut wtr = csv::Writer::from_writer(buf_writer);
+            for entry in entries {
+                wtr.serialize(entry)?;
+            }
+            wtr.flush()?;
+        }
     }
-
     info!("AOC finished in {:?}", starting.elapsed());
     Ok(())
 }
