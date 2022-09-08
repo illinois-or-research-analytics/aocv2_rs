@@ -1,7 +1,14 @@
+use crate::io::*;
 use crate::{utils, Cluster, Clustering, Graph, Node};
 use itertools::Itertools;
 use nom::{
-    branch::alt, bytes::complete::tag_no_case, number::complete::{be_u32}, sequence::{tuple, terminated}, Parser, IResult, combinator::recognize, multi::{many1, many0}, character::complete::{one_of, char},
+    branch::alt,
+    bytes::complete::tag_no_case,
+    character::complete::{char, one_of},
+    combinator::recognize,
+    multi::{many0, many1},
+    sequence::{terminated, tuple},
+    IResult, Parser,
 };
 use rayon::prelude::*;
 use std::cmp::Reverse;
@@ -99,21 +106,9 @@ pub enum AocConfig {
     Cpm(f64),
 }
 
-fn token<'a>(i : &'a str) -> impl Fn(&'a str) -> IResult<&'a str, &'a str> {
-    tag_no_case(i)
-}
-
-fn decimal(input: &str) -> IResult<&str, &str> {
-    recognize(
-      many1(
-        terminated(one_of("0123456789"), many0(char('_')))
-      )
-    )(input)
-  }
-
 pub fn parse_aoc_config(s: &str) -> Result<AocConfig, String> {
     let mut pc = alt((
-        alt((token("m"),token("mcd"))).map(|_| AocConfig::Mcd()),
+        alt((token("m"), token("mcd"))).map(|_| AocConfig::Mcd()),
         tuple((token("k"), decimal)).map(|(_, k)| AocConfig::K(k.parse::<usize>().unwrap())),
         tuple((token("cpm"), nom::number::complete::double)).map(|(_, k)| AocConfig::Cpm(k as f64)),
         tuple((token("mod"), nom::number::complete::double)).map(|(_, k)| AocConfig::Mod(k as f64)),
@@ -135,7 +130,7 @@ struct McdKAugmenter {
 }
 
 impl McdKAugmenter {
-    fn query(&mut self, bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
+    fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
         let cluster_core = c.core();
         let cluster_all = c.all();
         let num_core_neighbors = node.edges_inside(&cluster_core).count();
@@ -191,7 +186,7 @@ fn choose2(n: usize) -> usize {
 }
 
 impl Augmenter<AugmentByCpm> for CpmAugmenter {
-    fn query(&mut self, bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
+    fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
         let cluster_all = c.all();
         let ls_delta = node.edges_inside(&cluster_all).count() + self.ls;
         let cpm_delta = ls_delta as f64 - choose2(self.total_nodes + 1) as f64 * self.resolution;
@@ -214,7 +209,7 @@ struct ModularityAugmenter {
 }
 
 impl Augmenter<AugmentByMod> for ModularityAugmenter {
-    fn query(&mut self, bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
+    fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
         let cluster_core = c.core();
         let cluster_all = c.all();
         let num_core_neighbors = node.edges_inside(&cluster_core).count();
@@ -243,21 +238,21 @@ pub fn augment_clusters_from_cli_config(
 ) {
     match config {
         AocConfig::Mcd() => {
-            let mut augmenter = AugmentByMcd {};
+            let augmenter = AugmentByMcd {};
             augment_clusters(bg, clustering, candidate_ids, &augmenter);
         }
         AocConfig::K(k) => {
-            let mut augmenter = AugmentByK { k: *k };
+            let augmenter = AugmentByK { k: *k };
             augment_clusters(bg, clustering, candidate_ids, &augmenter);
         }
         AocConfig::Mod(resolution) => {
-            let mut augmenter = AugmentByMod {
+            let augmenter = AugmentByMod {
                 resolution: *resolution,
             };
             augment_clusters(bg, clustering, candidate_ids, &augmenter);
         }
         AocConfig::Cpm(resolution) => {
-            let mut augmenter = AugmentByCpm {
+            let augmenter = AugmentByCpm {
                 resolution: *resolution,
             };
             augment_clusters(bg, clustering, candidate_ids, &augmenter);
@@ -273,7 +268,7 @@ pub fn augment_clusters<X: AugmentingConfig + Clone + Sync>(
 ) {
     candidate_ids.sort_by_key(|&it| Reverse(bg.nodes[it].degree()));
     clustering.clusters.par_iter_mut().for_each(|(_, cluster)| {
-        let mut augmenter = X::augmenter(&augmenting_config, bg, cluster);
+        let mut augmenter = X::augmenter(augmenting_config, bg, cluster);
         if cluster.is_singleton() {
             return;
         }

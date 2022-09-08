@@ -1,5 +1,6 @@
 mod aoc;
 mod base;
+mod io;
 mod misc;
 mod quality;
 mod utils;
@@ -7,9 +8,10 @@ use std::io::{BufRead, BufWriter};
 use std::time::Instant;
 use std::{io::BufReader, path::PathBuf};
 
-use aoc::{augment_clusters, AocConfig};
+use aoc::AocConfig;
 pub use base::*;
 use clap::{ArgEnum, Parser, Subcommand};
+use io::CandidateSpecifier;
 use itertools::Itertools;
 use tracing::{info, warn};
 
@@ -40,12 +42,12 @@ enum SubCommand {
         /// Path to the clustering file
         #[clap(short, long)]
         clustering: PathBuf,
-        // #[clap(short = 'k', long)]
-        // min_k: Option<usize>,
+        #[clap(long)]
+        node_first_clustering: bool,
         #[clap(short, long, parse(try_from_str = aoc::parse_aoc_config))]
         mode: AocConfig,
-        #[clap(long)]
-        candidates: Option<PathBuf>,
+        #[clap(long, parse(try_from_str = io::parse_specifier))]
+        candidates: Option<CandidateSpecifier>,
         #[clap(short, long)]
         output: PathBuf,
     },
@@ -68,6 +70,8 @@ enum SubCommand {
         /// Path to the clusters/cluster file
         #[clap(short, long)]
         clusters: PathBuf,
+        #[clap(long)]
+        node_first_clustering: bool,
         /// If the given cluster file is only a newline separated node-list denoting one cluster
         #[clap(short, long)]
         single: bool,
@@ -90,17 +94,12 @@ fn main() -> anyhow::Result<()> {
         SubCommand::Augment {
             graph,
             clustering,
+            node_first_clustering,
             mode,
             candidates,
             output,
         } => {
             let config = mode;
-            // let config = {
-            //     match mode {
-            //         AocMode::M => AocConfig::M(),
-            //         AocMode::K => AocConfig::K(min_k.unwrap()),
-            //     }
-            // };
             info!("Augmenting clustering with config: {:?}", config);
             let graph = Graph::parse_from_file(&graph)?;
             info!(
@@ -110,7 +109,8 @@ fn main() -> anyhow::Result<()> {
                 now.elapsed()
             );
             let now = Instant::now();
-            let mut clustering = Clustering::parse_from_file(&graph, &clustering)?;
+            let mut clustering =
+                Clustering::parse_from_file(&graph, &clustering, node_first_clustering)?;
             info!("Clustering loaded in {:?}", now.elapsed());
             info!(
                 "Clustering contains {} clusters with {} entries",
@@ -121,17 +121,19 @@ fn main() -> anyhow::Result<()> {
                     .map(|c| c.core_nodes.len())
                     .sum::<usize>()
             );
-
             let now = Instant::now();
+            let candidates = candidates.unwrap_or(CandidateSpecifier::NonSingleton(2));
+            info!("Candidates specified as: {:?}", candidates);
             let mut candidates = match candidates {
-                None => clustering
+                CandidateSpecifier::NonSingleton(lb) => clustering
                     .clusters
                     .values()
                     .into_iter()
+                    .filter(|c| c.size() >= lb)
                     .flat_map(|cluster| cluster.core_nodes.iter())
                     .copied()
                     .collect_vec(),
-                Some(p) => BufReader::new(std::fs::File::open(p)?)
+                CandidateSpecifier::File(p) => BufReader::new(std::fs::File::open(p)?)
                     .lines()
                     .map(|l| graph.retrieve(l.unwrap().trim()).unwrap())
                     .collect_vec(),
@@ -160,6 +162,7 @@ fn main() -> anyhow::Result<()> {
         SubCommand::Stats {
             graph,
             clusters,
+            node_first_clustering,
             single,
             output,
         } => {
@@ -175,7 +178,8 @@ fn main() -> anyhow::Result<()> {
                 let ci = ClusterInformation::from_single_cluster(&graph, &subset);
                 vec![ci]
             } else {
-                let clustering = Clustering::parse_from_file(&graph, &clusters)?;
+                let clustering =
+                    Clustering::parse_from_file(&graph, &clusters, node_first_clustering)?;
                 ClusterInformation::vec_from_clustering(&graph, &clustering)
             };
             let buf_writer = BufWriter::new(std::fs::File::create(output)?);

@@ -9,6 +9,7 @@ use std::{
     ffi::OsStr,
     fs::File,
     io::{BufRead, BufReader, BufWriter, Read, Write},
+    iter::FromIterator,
     path::Path,
 };
 use tracing::debug;
@@ -273,8 +274,10 @@ impl Cluster {
     pub fn is_non_trivial(&self) -> bool {
         self.size() > 1
     }
+}
 
-    pub fn from_iter(iter: impl IntoIterator<Item = usize>) -> Cluster {
+impl FromIterator<usize> for Cluster {
+    fn from_iter<T: IntoIterator<Item = usize>>(iter: T) -> Self {
         let mut cluster = Cluster::default();
         for node in iter {
             cluster.add_core(node);
@@ -361,18 +364,26 @@ impl Clustering {
     pub fn parse_from_reader<R: Read + BufRead>(
         bg: &Graph<Node>,
         reader: R,
+        reverse: bool,
     ) -> anyhow::Result<Self> {
         let mut clusters: BTreeMap<usize, Cluster> = BTreeMap::default();
         for line in reader.lines() {
             let line = line?;
             let mut parts = line.split_whitespace();
-            let cluster_id: usize = parts
+            let cluster_name = parts
                 .next()
-                .ok_or_else(|| anyhow::anyhow!("missing cluster_id"))?
-                .parse()?;
+                .ok_or_else(|| anyhow::anyhow!("missing cluster_id"))?;
             let node_name = parts
                 .next()
                 .ok_or_else(|| anyhow::anyhow!("missing node_name"))?;
+            let (cluster_name, node_name) = if reverse {
+                (node_name, cluster_name)
+            } else {
+                (cluster_name, node_name)
+            };
+            let cluster_id = cluster_name
+                .parse::<usize>()
+                .map_err(|_| anyhow::anyhow!("invalid cluster_id"))?;
             let node_id = bg
                 .retrieve(node_name)
                 .ok_or_else(|| anyhow::anyhow!("node {} not found", node_name))?;
@@ -381,13 +392,13 @@ impl Clustering {
         Ok(Clustering { clusters })
     }
 
-    pub fn parse_from_file<P>(bg: &Graph<Node>, path: P) -> anyhow::Result<Self>
+    pub fn parse_from_file<P>(bg: &Graph<Node>, path: P, reverse: bool) -> anyhow::Result<Self>
     where
         P: AsRef<Path>,
     {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
-        Self::parse_from_reader(bg, reader)
+        Self::parse_from_reader(bg, reader, reverse)
     }
 
     pub fn write_raw<W>(&self, mut writer: W, graph: &Graph<Node>) -> anyhow::Result<()>
