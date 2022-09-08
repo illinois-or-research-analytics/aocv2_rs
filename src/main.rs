@@ -13,6 +13,7 @@ use clap::{ArgEnum, Parser, Subcommand};
 use itertools::Itertools;
 use tracing::{info, warn};
 
+use crate::aoc::augment_clusters_from_cli_config;
 use crate::misc::NodeList;
 use crate::quality::ClusterInformation;
 
@@ -39,10 +40,10 @@ enum SubCommand {
         /// Path to the clustering file
         #[clap(short, long)]
         clustering: PathBuf,
-        #[clap(short = 'k', long)]
-        min_k: Option<usize>,
-        #[clap(short, long, arg_enum)]
-        mode: AocMode,
+        // #[clap(short = 'k', long)]
+        // min_k: Option<usize>,
+        #[clap(short, long, parse(try_from_str = aoc::parse_aoc_config))]
+        mode: AocConfig,
         #[clap(long)]
         candidates: Option<PathBuf>,
         #[clap(short, long)]
@@ -89,17 +90,18 @@ fn main() -> anyhow::Result<()> {
         SubCommand::Augment {
             graph,
             clustering,
-            min_k,
             mode,
             candidates,
             output,
         } => {
-            let config = {
-                match mode {
-                    AocMode::M => AocConfig::AocM(),
-                    AocMode::K => AocConfig::AocK(min_k.unwrap()),
-                }
-            };
+            let config = mode;
+            // let config = {
+            //     match mode {
+            //         AocMode::M => AocConfig::M(),
+            //         AocMode::K => AocConfig::K(min_k.unwrap()),
+            //     }
+            // };
+            info!("Augmenting clustering with config: {:?}", config);
             let graph = Graph::parse_from_file(&graph)?;
             info!(
                 n = graph.n(),
@@ -140,7 +142,7 @@ fn main() -> anyhow::Result<()> {
                 now.elapsed()
             );
             let now = Instant::now();
-            augment_clusters(&graph, &mut clustering, &mut candidates, config);
+            augment_clusters_from_cli_config(&graph, &mut clustering, &mut candidates, &config);
             info!("Clusters augmented in {:?}", now.elapsed());
             clustering.write_file(&graph, &output)?;
         }

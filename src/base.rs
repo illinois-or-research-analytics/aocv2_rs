@@ -221,9 +221,8 @@ impl Graph<Node> {
     where
         X: AbstractSubset<'a>,
     {
-        self.nodes
-            .iter()
-            .filter(|it| view.contains(&it.id))
+        view.each_node_id()
+            .map(|it| &self.nodes[*it])
             .flat_map(|it| it.edges_inside(view).map(|e| (it.id, *e)))
     }
 
@@ -259,7 +258,7 @@ impl Cluster {
         self.periphery_nodes.insert(node);
     }
 
-    pub fn mcd(&mut self, bg: &Graph<Node>) -> Option<usize> {
+    pub fn mcd(&self, bg: &Graph<Node>) -> Option<usize> {
         bg.degrees_inside(&self.core()).min()
     }
 

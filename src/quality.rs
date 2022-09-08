@@ -1,7 +1,6 @@
 use serde::Deserialize;
 use serde::Serialize;
 
-
 use crate::base::Graph;
 use crate::utils::calc_modularity;
 use crate::AbstractSubset;
