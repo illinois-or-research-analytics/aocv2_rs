@@ -1,6 +1,6 @@
 use crate::utils::{self, NameSet};
 use ahash::AHashSet;
-use anyhow::Ok;
+use anyhow::{Ok, bail};
 use itertools::Itertools;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -367,6 +367,7 @@ impl Clustering {
         reverse: bool,
     ) -> anyhow::Result<Self> {
         let mut clusters: BTreeMap<usize, Cluster> = BTreeMap::default();
+        let mut not_found_nodes : BTreeSet<usize> = BTreeSet::default();
         for line in reader.lines() {
             let line = line?;
             let mut parts = line.split_whitespace();
@@ -385,9 +386,19 @@ impl Clustering {
                 .parse::<usize>()
                 .map_err(|_| anyhow::anyhow!("invalid cluster_id"))?;
             let node_id = bg
-                .retrieve(node_name)
-                .ok_or_else(|| anyhow::anyhow!("node {} not found", node_name))?;
-            clusters.entry(cluster_id).or_default().add_core(node_id);
+                .retrieve(node_name);
+            match node_id {
+                Some(node_id) => {
+                    clusters.entry(cluster_id).or_default().add_core(node_id);
+                },
+                None => {
+                    if !not_found_nodes.contains(&cluster_id) {
+                        not_found_nodes.insert(cluster_id);
+                    } else {
+                        bail!("node {} stipulated in cluster {} not found in graph, and is not singleton", node_name, cluster_id);
+                    }
+                }
+            }
         }
         Ok(Clustering { clusters })
     }
