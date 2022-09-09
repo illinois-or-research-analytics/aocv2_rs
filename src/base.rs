@@ -1,6 +1,6 @@
 use crate::utils::{self, NameSet};
 use ahash::AHashSet;
-use anyhow::{Ok, bail};
+use anyhow::{bail, Ok};
 use itertools::Itertools;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -159,7 +159,7 @@ where
 impl Graph<Node> {
     pub fn parse_edgelist_from_reader<R: BufRead + Read>(reader: R) -> anyhow::Result<Graph<Node>> {
         let mut graph = Graph::<TransientNode>::default();
-        let mut progress = 0;
+        // let mut progress = 0;
         for line in reader.lines() {
             let line = line?;
             let mut parts = line.split_whitespace();
@@ -171,10 +171,10 @@ impl Graph<Node> {
             let to_id = graph.request(to);
             graph.nodes[from_id].add_out_edge(to_id);
             graph.nodes[to_id].add_in_edge(from_id);
-            progress += 1;
-            if progress % 100000 == 0 {
-                debug!("progress: {}", progress);
-            }
+            // progress += 1;
+            // if progress % 100000 == 0 {
+            //     debug!("progress: {}", progress);
+            // }
         }
         let (permanent_nodes, name_set) = (
             graph
@@ -367,7 +367,7 @@ impl Clustering {
         reverse: bool,
     ) -> anyhow::Result<Self> {
         let mut clusters: BTreeMap<usize, Cluster> = BTreeMap::default();
-        let mut not_found_nodes : BTreeSet<usize> = BTreeSet::default();
+        let mut not_found_nodes: BTreeSet<usize> = BTreeSet::default();
         for line in reader.lines() {
             let line = line?;
             let mut parts = line.split_whitespace();
@@ -385,12 +385,11 @@ impl Clustering {
             let cluster_id = cluster_name
                 .parse::<usize>()
                 .map_err(|_| anyhow::anyhow!("invalid cluster_id"))?;
-            let node_id = bg
-                .retrieve(node_name);
+            let node_id = bg.retrieve(node_name);
             match node_id {
                 Some(node_id) => {
                     clusters.entry(cluster_id).or_default().add_core(node_id);
-                },
+                }
                 None => {
                     if !not_found_nodes.contains(&cluster_id) {
                         not_found_nodes.insert(cluster_id);
@@ -399,6 +398,15 @@ impl Clustering {
                     }
                 }
             }
+        }
+        let singleton_keys = clusters
+                .iter()
+                .filter(|(_, cluster)| cluster.is_singleton())
+                .map(|(k, _)| k)
+                .copied()
+                .collect_vec();
+        for key in singleton_keys.iter() {
+            clusters.remove(key);
         }
         Ok(Clustering { clusters })
     }

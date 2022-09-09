@@ -1,16 +1,20 @@
 AOCluster
 ===================
 
-A rewrite of the Python version of assembling overlapping clusters. Currently, it is runnable but has discrepancies with the original Python version -- investigating.
+A rewrite of the Python version of assembling overlapping clusters.
 
 ## Getting Started
 
-Install (TODO: add installation instructions) the `aocluster` binary first, then
+Install the `aocluster` binary first, then
 run the following command for AOC_k with $k = 10$:
 
 ```bash
-aocluster augment -g edgelistgraph.tsv -c existing_clustering.txt --mode k --min-k 10 -o output.txt
+aocluster augment -g edgelistgraph.tsv -c existing_clustering.txt --candidates list_of_candidates --mode k10 -o output.txt
 ```
+
+### Parameters
+
+ - `--mode`: can be one of `m` (AOC_m), `k{num}` (AOC_k with k = `num`), `cpm{float}` (AOC_Cpm with resolution as `float`) or `mod{float}` (AOC_Mod with resolution as `float`).
 
 ## Other Commands
 

@@ -27,7 +27,7 @@ pub fn parse_specifier(s: &str) -> Result<CandidateSpecifier, String> {
         return Err("Empty specifier".to_string());
     }
     let mut ps = alt((
-        tuple((token("cluster_size"), token(">="), decimal))
+        tuple((token("cluster_size"), token(":"), decimal))
             .map(|(_, _, n)| CandidateSpecifier::NonSingleton(n.parse().unwrap())),
         many1(anychar).map(|f| CandidateSpecifier::File(f.into_iter().collect())),
     ));

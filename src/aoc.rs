@@ -12,6 +12,7 @@ use nom::{
 };
 use rayon::prelude::*;
 use std::cmp::Reverse;
+use tracing::debug;
 
 pub trait AugmentingConfig: Sized {
     type Augmenter: Augmenter<Self>;
@@ -267,21 +268,25 @@ pub fn augment_clusters<X: AugmentingConfig + Clone + Sync>(
     augmenting_config: &X,
 ) {
     candidate_ids.sort_by_key(|&it| Reverse(bg.nodes[it].degree()));
-    clustering.clusters.par_iter_mut().for_each(|(_, cluster)| {
-        let mut augmenter = X::augmenter(augmenting_config, bg, cluster);
-        if cluster.is_singleton() {
-            return;
-        }
-        let cluster_core = &cluster.core_nodes;
-        let viable_candidates = candidate_ids
-            .iter()
-            .filter(|it| !cluster_core.contains(*it))
-            .map(|&it| &bg.nodes[it])
-            .collect_vec();
-        for cand in viable_candidates {
-            if augmenter.query(bg, cluster, cand) {
-                cluster.add_periphery(cand.id);
+    clustering
+        .clusters
+        .par_iter_mut()
+        .for_each(|(&cid, cluster)| {
+            debug!("Augmenting cluster {} with size {}", cid, cluster.size());
+            let mut augmenter = X::augmenter(augmenting_config, bg, cluster);
+            if cluster.is_singleton() {
+                return;
             }
-        }
-    });
+            let cluster_core = &cluster.core_nodes;
+            let viable_candidates = candidate_ids
+                .iter()
+                .filter(|it| !cluster_core.contains(*it))
+                .map(|&it| &bg.nodes[it])
+                .collect_vec();
+            for cand in viable_candidates {
+                if augmenter.query(bg, cluster, cand) {
+                    cluster.add_periphery(cand.id);
+                }
+            }
+        });
 }
