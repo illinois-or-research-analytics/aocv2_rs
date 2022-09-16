@@ -18,6 +18,10 @@ impl NameSet {
     }
 }
 
+pub fn choose2(n: usize) -> usize {
+    n * (n - 1) / 2
+}
+
 pub fn calc_modularity(ls: usize, ds: usize, big_l: usize) -> f64 {
     let (ls, ds, big_l) = (ls as f64, ds as f64, big_l as f64);
     (ls / big_l) - (ds / (2.0 * big_l)).powi(2)
@@ -26,6 +30,10 @@ pub fn calc_modularity(ls: usize, ds: usize, big_l: usize) -> f64 {
 pub fn calc_modularity_resolution(ls: usize, ds: usize, big_l: usize, resolution: f64) -> f64 {
     let (ls, ds, big_l) = (ls as f64, ds as f64, big_l as f64);
     (ls / big_l) - resolution * (ds / (2.0 * big_l)).powi(2)
+}
+
+pub fn calc_cpm_resolution(ls : usize, n : usize, resolution : f64) -> f64 {
+    ls as f64 - resolution * choose2(n) as f64
 }
 
 pub fn write_compressed_bincode<S, P>(path: P, data: &S) -> anyhow::Result<()>

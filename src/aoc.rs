@@ -1,4 +1,5 @@
 use crate::io::*;
+use crate::utils::choose2;
 use crate::{utils, Cluster, Clustering, Graph, Node};
 use itertools::Itertools;
 use nom::{
@@ -109,10 +110,10 @@ pub enum AocConfig {
 
 pub fn parse_aoc_config(s: &str) -> Result<AocConfig, String> {
     let mut pc = alt((
-        alt((token("m"), token("mcd"))).map(|_| AocConfig::Mcd()),
-        tuple((token("k"), decimal)).map(|(_, k)| AocConfig::K(k.parse::<usize>().unwrap())),
         tuple((token("cpm"), nom::number::complete::double)).map(|(_, k)| AocConfig::Cpm(k as f64)),
         tuple((token("mod"), nom::number::complete::double)).map(|(_, k)| AocConfig::Mod(k as f64)),
+        alt((token("m"), token("mcd"))).map(|_| AocConfig::Mcd()),
+        tuple((token("k"), decimal)).map(|(_, k)| AocConfig::K(k.parse::<usize>().unwrap())),
     ));
     let (rest, config) = pc(s).map_err(|e| format!("{:?}", e))?;
     if rest.is_empty() {
@@ -182,9 +183,7 @@ struct CpmAugmenter {
     ls: usize,
 }
 
-fn choose2(n: usize) -> usize {
-    n * (n - 1) / 2
-}
+
 
 impl Augmenter<AugmentByCpm> for CpmAugmenter {
     fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {

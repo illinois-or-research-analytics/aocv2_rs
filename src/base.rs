@@ -16,18 +16,23 @@ use tracing::debug;
 
 pub trait AbstractNode {
     //! A trait for nodes in a graph.
+    //! The (weak) reason this exists is to handle polymorphism in the underlying edge storage.
     fn assign_id(&mut self, id: usize);
     fn add_out_edge(&mut self, target: usize);
     fn add_in_edge(&mut self, from: usize);
 }
 
-/// A trait for a specific subset of a graph.
+/// An abstract representation for a specific subset of a graph.
+/// This subset needs to support two operations.
+/// First a fast query of a node existence, and secondly to iterate over all nodes.
 pub trait AbstractSubset<'a> {
     fn contains(&self, node_id: &usize) -> bool;
     type NodeIterator: Iterator<Item = &'a usize>;
     fn each_node_id(&'a self) -> Self::NodeIterator;
 }
 
+/// A node specialized to eliminate parallel edges during construction, using sets as the underlying storage of edges.
+/// It is not designed to be the permanent representation of nodes and should be converted after building the graph.
 #[derive(Default, Debug)]
 pub struct TransientNode {
     id: usize,
@@ -52,7 +57,8 @@ impl AbstractNode for TransientNode {
     }
 }
 
-/// The default node type, contains information  both the directed and the undirected topology
+/// The default node type, contains information both the directed and the undirected topology
+/// with storage of edges as a vector for maximum efficiency of iteration.
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Node {
     pub id: usize,
@@ -103,6 +109,7 @@ impl AbstractNode for Node {
 }
 
 impl TransientNode {
+    /// Converts a transient node into a permanent node by flattening the edge-set into a vector.
     pub fn into_permanent(self) -> Node {
         Node {
             id: self.id,
@@ -159,7 +166,6 @@ where
 impl Graph<Node> {
     pub fn parse_edgelist_from_reader<R: BufRead + Read>(reader: R) -> anyhow::Result<Graph<Node>> {
         let mut graph = Graph::<TransientNode>::default();
-        // let mut progress = 0;
         for line in reader.lines() {
             let line = line?;
             let mut parts = line.split_whitespace();
@@ -171,10 +177,6 @@ impl Graph<Node> {
             let to_id = graph.request(to);
             graph.nodes[from_id].add_out_edge(to_id);
             graph.nodes[to_id].add_in_edge(from_id);
-            // progress += 1;
-            // if progress % 100000 == 0 {
-            //     debug!("progress: {}", progress);
-            // }
         }
         let (permanent_nodes, name_set) = (
             graph

@@ -72,6 +72,9 @@ enum SubCommand {
         clusters: PathBuf,
         #[clap(long)]
         node_first_clustering: bool,
+        /// Quality metric to calculate
+        #[clap(short, long, parse(try_from_str = aoc::parse_aoc_config))]
+        quality: Option<AocConfig>,
         /// If the given cluster file is only a newline separated node-list denoting one cluster
         #[clap(short, long)]
         single: bool,
@@ -163,9 +166,11 @@ fn main() -> anyhow::Result<()> {
             graph,
             clusters,
             node_first_clustering,
+            quality,
             single,
             output,
         } => {
+            let quality = quality.unwrap_or(AocConfig::Mcd());
             let graph = Graph::parse_from_file(&graph)?;
             info!(
                 n = graph.n(),
@@ -175,12 +180,12 @@ fn main() -> anyhow::Result<()> {
             );
             let entries = if single {
                 let subset = NodeList::from_raw_file(&graph, &clusters)?.into_owned_subset();
-                let ci = ClusterInformation::from_single_cluster(&graph, &subset);
+                let ci = ClusterInformation::from_single_cluster(&graph, &subset, &quality);
                 vec![ci]
             } else {
                 let clustering =
                     Clustering::parse_from_file(&graph, &clusters, node_first_clustering)?;
-                ClusterInformation::vec_from_clustering(&graph, &clustering)
+                ClusterInformation::vec_from_clustering(&graph, &clustering, &quality)
             };
             let buf_writer = BufWriter::new(std::fs::File::create(output)?);
             let mut wtr = csv::Writer::from_writer(buf_writer);
