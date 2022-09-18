@@ -4,12 +4,7 @@ use crate::{utils, Cluster, Clustering, Graph, Node};
 use itertools::Itertools;
 use nom::{
     branch::alt,
-    bytes::complete::tag_no_case,
-    character::complete::{char, one_of},
-    combinator::recognize,
-    multi::{many0, many1},
-    sequence::{terminated, tuple},
-    IResult, Parser,
+    sequence::{tuple}, Parser,
 };
 use rayon::prelude::*;
 use std::cmp::Reverse;
