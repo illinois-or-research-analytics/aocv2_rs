@@ -32,7 +32,7 @@ pub fn calc_modularity_resolution(ls: usize, ds: usize, big_l: usize, resolution
     (ls / big_l) - resolution * (ds / (2.0 * big_l)).powi(2)
 }
 
-pub fn calc_cpm_resolution(ls : usize, n : usize, resolution : f64) -> f64 {
+pub fn calc_cpm_resolution(ls: usize, n: usize, resolution: f64) -> f64 {
     ls as f64 - resolution * choose2(n) as f64
 }
 

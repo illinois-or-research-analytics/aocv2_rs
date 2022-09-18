@@ -183,18 +183,16 @@ struct CpmAugmenter {
     ls: usize,
 }
 
-
-
 impl Augmenter<AugmentByCpm> for CpmAugmenter {
     fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
         let cluster_all = c.all();
-        let ls_delta = node.edges_inside(&cluster_all).count() + self.ls;
-        let cpm_delta = ls_delta as f64 - choose2(self.total_nodes + 1) as f64 * self.resolution;
-        if cpm_delta < self.cpm {
+        let ls_prime = node.edges_inside(&cluster_all).count() + self.ls;
+        let cpm_prime = ls_prime as f64 - choose2(self.total_nodes + 1) as f64 * self.resolution;
+        if cpm_prime < self.cpm {
             return false;
         }
-        self.ls = ls_delta;
-        self.cpm = cpm_delta;
+        self.ls = ls_prime;
+        self.cpm = cpm_prime;
         self.total_nodes += 1;
         true
     }
@@ -210,21 +208,16 @@ struct ModularityAugmenter {
 
 impl Augmenter<AugmentByMod> for ModularityAugmenter {
     fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
-        let cluster_core = c.core();
         let cluster_all = c.all();
-        let num_core_neighbors = node.edges_inside(&cluster_core).count();
-        if num_core_neighbors == 0 {
-            return false;
-        }
-        let ls_delta = node.edges_inside(&cluster_all).count() + self.ls;
-        let ds_delta = node.degree() + self.ds;
+        let ls_prime = node.edges_inside(&cluster_all).count() + self.ls;
+        let ds_prime = node.degree() + self.ds;
         let new_modularity =
-            utils::calc_modularity_resolution(ls_delta, ds_delta, self.total_l, self.resolution);
+            utils::calc_modularity_resolution(ls_prime, ds_prime, self.total_l, self.resolution);
         if new_modularity <= self.modularity {
             return false;
         }
-        self.ls = ls_delta;
-        self.ds = ds_delta;
+        self.ls = ls_prime;
+        self.ds = ds_prime;
         self.modularity = new_modularity;
         true
     }

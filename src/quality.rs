@@ -7,9 +7,9 @@ use crate::utils::calc_cpm_resolution;
 use crate::utils::calc_modularity;
 use crate::AbstractSubset;
 
+use crate::utils::calc_modularity_resolution;
 use crate::Clustering;
 use crate::Node;
-use crate::utils::calc_modularity_resolution;
 pub fn modularity<'a, X>(g: &'a Graph<Node>, c: &'a X) -> f64
 where
     X: AbstractSubset<'a>,
@@ -37,16 +37,15 @@ pub struct ClusterInformation {
     m: usize,
     mcd: usize,
     modularity: f64,
-    cpm : f64,
+    cpm: f64,
 }
 
 impl ClusterInformation {
-    pub fn from_single_cluster<'a, X>(g: &'a Graph<Node>, c: &'a X, quality : &AocConfig) -> Self
+    pub fn from_single_cluster<'a, X>(g: &'a Graph<Node>, c: &'a X, quality: &AocConfig) -> Self
     where
         X: AbstractSubset<'a>,
     {
-        let resolution = match  quality
-         {
+        let resolution = match quality {
             AocConfig::Mcd() => 1.0,
             AocConfig::K(_) => 1.0,
             AocConfig::Mod(r) => *r,
@@ -55,7 +54,7 @@ impl ClusterInformation {
         let n = c.each_node_id().count();
         let m = g.num_edges_inside(c);
         let mcd = mcd(g, c);
-        
+
         let big_l = g.m();
         let ls = g.num_edges_inside(c);
         let ds = c
@@ -75,7 +74,11 @@ impl ClusterInformation {
     }
 
     // TODO: see if it is right to set mcd only among the core nodes
-    pub fn vec_from_clustering(g: &Graph<Node>, clus: &Clustering, quality : &AocConfig) -> Vec<Self> {
+    pub fn vec_from_clustering(
+        g: &Graph<Node>,
+        clus: &Clustering,
+        quality: &AocConfig,
+    ) -> Vec<Self> {
         let mut records = Vec::new();
         for (&k, v) in clus.clusters.iter() {
             let mut record = Self::from_single_cluster(g, &v.core(), quality);

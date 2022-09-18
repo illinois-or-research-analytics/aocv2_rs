@@ -125,7 +125,7 @@ pub struct Graph<NodeT>
 where
     NodeT: Default + AbstractNode,
 {
-    name_set: NameSet,
+    pub name_set: NameSet,
     pub nodes: Vec<NodeT>,
     m_cache: usize,
 }
@@ -402,11 +402,11 @@ impl Clustering {
             }
         }
         let singleton_keys = clusters
-                .iter()
-                .filter(|(_, cluster)| cluster.is_singleton())
-                .map(|(k, _)| k)
-                .copied()
-                .collect_vec();
+            .iter()
+            .filter(|(_, cluster)| cluster.is_singleton())
+            .map(|(k, _)| k)
+            .copied()
+            .collect_vec();
         for key in singleton_keys.iter() {
             clusters.remove(key);
         }

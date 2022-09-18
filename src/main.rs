@@ -1,5 +1,6 @@
 mod aoc;
 mod base;
+mod dump;
 mod io;
 mod misc;
 mod quality;
@@ -16,6 +17,7 @@ use itertools::Itertools;
 use tracing::{info, warn};
 
 use crate::aoc::augment_clusters_from_cli_config;
+use crate::dump::dump_graph_to_json;
 use crate::misc::NodeList;
 use crate::quality::ClusterInformation;
 
@@ -79,6 +81,16 @@ enum SubCommand {
         #[clap(short, long)]
         single: bool,
         /// Output path for the statistics
+        #[clap(short, long)]
+        output: PathBuf,
+    },
+
+    /// Dump basic information about the graph
+    Dump {
+        /// Path to the graph
+        #[clap(short, long)]
+        graph: PathBuf,
+        /// Output path for the dumped graph in json format
         #[clap(short, long)]
         output: PathBuf,
     },
@@ -193,6 +205,10 @@ fn main() -> anyhow::Result<()> {
                 wtr.serialize(entry)?;
             }
             wtr.flush()?;
+        }
+        SubCommand::Dump { graph, output } => {
+            let graph = Graph::parse_from_file(&graph)?;
+            dump_graph_to_json(&graph, &output)?;
         }
     }
     info!("AOC finished in {:?}", starting.elapsed());
