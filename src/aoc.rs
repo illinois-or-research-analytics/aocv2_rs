@@ -181,13 +181,14 @@ struct CpmAugmenter {
 impl Augmenter<AugmentByCpm> for CpmAugmenter {
     fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
         let cluster_all = c.all();
-        let ls_prime = node.edges_inside(&cluster_all).count() + self.ls;
-        let cpm_prime = ls_prime as f64 - choose2(self.total_nodes + 1) as f64 * self.resolution;
-        if cpm_prime < self.cpm {
+        let d = node.edges_inside(&cluster_all).count();
+        // let cpm_prime = ls_prime as f64 - choose2(self.total_nodes + 1) as f64 * self.resolution;
+        // if cpm_prime < self.cpm {
+        //     return false;
+        // }
+        if (d as f64) < self.resolution * (self.total_nodes as f64) {
             return false;
         }
-        self.ls = ls_prime;
-        self.cpm = cpm_prime;
         self.total_nodes += 1;
         true
     }
