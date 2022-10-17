@@ -2,10 +2,7 @@ use crate::io::*;
 use crate::utils::choose2;
 use crate::{utils, Cluster, Clustering, Graph, Node};
 use itertools::Itertools;
-use nom::{
-    branch::alt,
-    sequence::{tuple}, Parser,
-};
+use nom::{branch::alt, sequence::tuple, Parser};
 use rayon::prelude::*;
 use std::cmp::Reverse;
 use tracing::debug;
@@ -57,11 +54,13 @@ impl AugmentingConfig for AugmentByCpm {
     fn augmenter(&self, bg: &Graph<Node>, c: &Cluster) -> Self::Augmenter {
         let ls = bg.num_edges_inside(&c.core());
         let total_nodes = bg.n();
+        let cpm = ls as f64 - choose2(total_nodes) as f64 * self.resolution;
         CpmAugmenter {
+            original_cpm: cpm,
             resolution: self.resolution,
             total_nodes,
             ls,
-            cpm: ls as f64 - choose2(total_nodes) as f64 * self.resolution,
+            cpm,
         }
     }
 }
@@ -79,11 +78,32 @@ impl AugmentingConfig for AugmentByMod {
             .sum::<usize>();
         let modularity = utils::calc_modularity_resolution(ls, ds, total_l, self.resolution);
         ModularityAugmenter {
+            original_modularity: modularity,
             resolution: self.resolution,
             modularity,
             total_l,
             ls,
             ds,
+        }
+    }
+}
+
+#[derive(Clone)]
+struct AugmentByDensityThreshold {
+    pub threshold: Option<f64>,
+}
+
+impl AugmentingConfig for AugmentByDensityThreshold {
+    type Augmenter = DensityThresholdAugmenter;
+
+    fn augmenter(&self, bg: &Graph<Node>, c: &Cluster) -> Self::Augmenter {
+        let ls = bg.num_edges_inside(&c.core());
+        let m = bg.num_edges_inside(&c.core());
+        let n = c.core_nodes.len();
+        let density = n as f64 / choose2(n) as f64;
+        DensityThresholdAugmenter {
+            threshold: self.threshold.unwrap_or(density),
+            ls,
         }
     }
 }
@@ -101,12 +121,16 @@ pub enum AocConfig {
     K(usize),
     Mod(f64),
     Cpm(f64),
+    EdgeDensity(f64),
+    Denser(),
 }
 
 pub fn parse_aoc_config(s: &str) -> Result<AocConfig, String> {
     let mut pc = alt((
         tuple((token("cpm"), nom::number::complete::double)).map(|(_, k)| AocConfig::Cpm(k as f64)),
         tuple((token("mod"), nom::number::complete::double)).map(|(_, k)| AocConfig::Mod(k as f64)),
+        tuple((token("density"), nom::number::complete::double)).map(|(_, k)| AocConfig::EdgeDensity(k as f64)),
+        token("denser").map(|_| AocConfig::Denser()),
         alt((token("m"), token("mcd"))).map(|_| AocConfig::Mcd()),
         tuple((token("k"), decimal)).map(|(_, k)| AocConfig::K(k.parse::<usize>().unwrap())),
     ));
@@ -114,7 +138,7 @@ pub fn parse_aoc_config(s: &str) -> Result<AocConfig, String> {
     if rest.is_empty() {
         Ok(config)
     } else {
-        Err(format!("Could not parse config: {}", s))
+        Err(format!("Could not parse config specifying candidate addition criterion: {}", s))
     }
 }
 
@@ -171,7 +195,30 @@ impl Augmenter<AugmentByK> for McdKAugmenter {
     }
 }
 
+#[derive(Debug, Clone)]
+struct DensityThresholdAugmenter {
+    threshold : f64,
+    ls: usize,
+}
+
+impl Augmenter<AugmentByDensityThreshold> for DensityThresholdAugmenter {
+    fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
+        let cluster_all = c.all();
+        let n_prime = c.size() + 1;
+        let degree_inside = node.degree_inside(&cluster_all);
+        let m_prime = self.ls + degree_inside;
+        let density_prime = m_prime as f64 / choose2(n_prime) as f64;
+        if density_prime >= self.threshold {
+            self.ls = m_prime;
+            true
+        } else {
+            false
+        }
+    }
+}
+
 struct CpmAugmenter {
+    original_cpm: f64,
     resolution: f64,
     cpm: f64,
     total_nodes: usize,
@@ -180,21 +227,27 @@ struct CpmAugmenter {
 
 impl Augmenter<AugmentByCpm> for CpmAugmenter {
     fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
-        let cluster_all = c.all();
-        let d = node.edges_inside(&cluster_all).count();
-        // let cpm_prime = ls_prime as f64 - choose2(self.total_nodes + 1) as f64 * self.resolution;
-        // if cpm_prime < self.cpm {
+        // let cluster_all = c.all();
+        // let d = node.edges_inside(&cluster_all).count();
+        // if (d as f64) < self.resolution * (self.total_nodes as f64) {
         //     return false;
         // }
-        if (d as f64) < self.resolution * (self.total_nodes as f64) {
+        let cluster_all = c.all();
+        let n_prime = c.size() + 1;
+        let degree_inside = node.degree_inside(&cluster_all);
+        let m_prime = self.ls + degree_inside;
+        let cpm_prime = m_prime as f64 - choose2(n_prime) as f64 * self.resolution;
+        if cpm_prime < self.original_cpm {
             return false;
         }
         self.total_nodes += 1;
+        self.ls += degree_inside;
         true
     }
 }
 
 struct ModularityAugmenter {
+    original_modularity: f64,
     resolution: f64,
     modularity: f64,
     total_l: usize,
@@ -209,12 +262,11 @@ impl Augmenter<AugmentByMod> for ModularityAugmenter {
         let ds_prime = node.degree() + self.ds;
         let new_modularity =
             utils::calc_modularity_resolution(ls_prime, ds_prime, self.total_l, self.resolution);
-        if new_modularity <= self.modularity {
+        if new_modularity <= self.original_modularity {
             return false;
         }
         self.ls = ls_prime;
         self.ds = ds_prime;
-        self.modularity = new_modularity;
         true
     }
 }
@@ -246,6 +298,18 @@ pub fn augment_clusters_from_cli_config(
             };
             augment_clusters(bg, clustering, candidate_ids, &augmenter);
         }
+        AocConfig::EdgeDensity(gamma) => {
+            let augmenter = AugmentByDensityThreshold {
+                threshold: Some(*gamma),
+            };
+            augment_clusters(bg, clustering, candidate_ids, &augmenter);
+        },
+        AocConfig::Denser() => {
+            let augmenter = AugmentByDensityThreshold {
+                threshold: None,
+            };
+            augment_clusters(bg, clustering, candidate_ids, &augmenter);
+        },
     }
 }
 

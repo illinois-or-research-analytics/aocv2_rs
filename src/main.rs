@@ -32,6 +32,8 @@ pub enum AocMode {
 struct Args {
     #[clap(subcommand)]
     cmd: SubCommand,
+    #[clap(short = 't', long)]
+    threads: Option<usize>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -94,14 +96,43 @@ enum SubCommand {
         #[clap(short, long)]
         output: PathBuf,
     },
+
+    /// Filter a clustering
+    Filter {
+        /// Path to the edgelist graph
+        #[clap(short, long)]
+        graph: PathBuf,
+        /// Path to the clusters/cluster file
+        #[clap(short, long)]
+        clusters: PathBuf,
+        #[clap(long)]
+        node_first_clustering: bool,
+        /// Keep tree-like clusters
+        #[clap(long)]
+        keep_tree: bool,
+        #[clap(long)]
+        size_lower_bound: Option<usize>,
+        /// Output path
+        #[clap(short, long)]
+        output: PathBuf,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
+    // for benchmarking
     let now = Instant::now();
     let starting = now;
+    // initialize logging
     tracing_subscriber::fmt::init();
     let args = Args::parse();
-    let num_cpu = num_cpus::get_physical().min(32);
+    let mut num_cpu = num_cpus::get_physical().min(32); // TODO: specify number of cores
+    if let Some(specified_cores) = args.threads {
+        if specified_cores > num_cpus::get_physical() {
+            warn!("Specified more cores than available, using all available cores");
+        } else {
+            num_cpu = specified_cores;
+        }
+    }
     rayon::ThreadPoolBuilder::new()
         .num_threads(num_cpu)
         .build_global()?;
@@ -161,7 +192,7 @@ fn main() -> anyhow::Result<()> {
             let now = Instant::now();
             augment_clusters_from_cli_config(&graph, &mut clustering, &mut candidates, &config);
             info!("Clusters augmented in {:?}", now.elapsed());
-            clustering.write_file(&graph, &output)?;
+            clustering.write_file(&graph, &output, node_first_clustering)?;
         }
         SubCommand::Pack { graph, mut output } => {
             if !output.ends_with(".bincode.lz4") {
@@ -209,6 +240,49 @@ fn main() -> anyhow::Result<()> {
         SubCommand::Dump { graph, output } => {
             let graph = Graph::parse_from_file(&graph)?;
             dump_graph_to_json(&graph, &output)?;
+        }
+        SubCommand::Filter {
+            graph,
+            clusters,
+            node_first_clustering,
+            keep_tree,
+            size_lower_bound,
+            output,
+        } => {
+            let graph = Graph::parse_from_file(&graph)?;
+            let mut clustering =
+                Clustering::parse_from_file(&graph, &clusters, node_first_clustering)?;
+            info!(
+                "Clustering contains {} clusters with {} entries",
+                clustering.clusters.len(),
+                clustering
+                    .clusters
+                    .values()
+                    .map(|c| c.core_nodes.len())
+                    .sum::<usize>()
+            );
+            clustering.retain(|_cid, c| {
+                let core = c.core();
+                if !keep_tree && core.num_nodes() - 1 >= graph.num_edges_inside(&core) {
+                    return false;
+                }
+                if let Some(lb) = size_lower_bound {
+                    if c.size() < lb {
+                        return false;
+                    }
+                }
+                true
+            });
+            info!(
+                "Clustering after filtering contains {} clusters with {} entries",
+                clustering.clusters.len(),
+                clustering
+                    .clusters
+                    .values()
+                    .map(|c| c.core_nodes.len())
+                    .sum::<usize>()
+            );
+            clustering.write_file(&graph, output, node_first_clustering)?;
         }
     }
     info!("AOC finished in {:?}", starting.elapsed());

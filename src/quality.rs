@@ -46,10 +46,9 @@ impl ClusterInformation {
         X: AbstractSubset<'a>,
     {
         let resolution = match quality {
-            AocConfig::Mcd() => 1.0,
-            AocConfig::K(_) => 1.0,
             AocConfig::Mod(r) => *r,
             AocConfig::Cpm(r) => *r,
+            _ => 1.0,
         };
         let n = c.each_node_id().count();
         let m = g.num_edges_inside(c);

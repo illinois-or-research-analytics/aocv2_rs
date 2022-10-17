@@ -29,6 +29,10 @@ pub trait AbstractSubset<'a> {
     fn contains(&self, node_id: &usize) -> bool;
     type NodeIterator: Iterator<Item = &'a usize>;
     fn each_node_id(&'a self) -> Self::NodeIterator;
+
+    fn num_nodes(&'a self) -> usize {
+        self.each_node_id().count()
+    }
 }
 
 /// A node specialized to eliminate parallel edges during construction, using sets as the underlying storage of edges.
@@ -73,6 +77,20 @@ impl Node {
         X: AbstractSubset<'a>,
     {
         self.edges.iter().filter(move |&e| c.contains(e))
+    }
+
+    pub fn degree_inside<'a, X>(&'a self, c: &'a X) -> usize
+    where
+        X: AbstractSubset<'a>,
+    {
+        self.edges_inside(c).count()
+    }
+
+    pub fn is_relevant_to<'a, X>(&'a self, c: &'a X) -> bool
+    where
+        X: AbstractSubset<'a>,
+    {
+        self.degree_inside(c) > 0
     }
 
     pub fn degree(&self) -> usize {
@@ -265,6 +283,7 @@ impl Cluster {
         bg.degrees_inside(&self.core()).min()
     }
 
+    /// Number of nodes of the entirety (core + periphery)
     pub fn size(&self) -> usize {
         self.core_nodes.len() + self.periphery_nodes.len()
     }
@@ -422,7 +441,12 @@ impl Clustering {
         Self::parse_from_reader(bg, reader, reverse)
     }
 
-    pub fn write_raw<W>(&self, mut writer: W, graph: &Graph<Node>) -> anyhow::Result<()>
+    pub fn write_raw<W>(
+        &self,
+        mut writer: W,
+        graph: &Graph<Node>,
+        node_first_clustering: bool,
+    ) -> anyhow::Result<()>
     where
         W: Write,
     {
@@ -432,24 +456,36 @@ impl Clustering {
                 .iter()
                 .chain(cluster.periphery_nodes.iter())
             {
-                writeln!(
-                    writer,
-                    "{} {}",
-                    cluster_id,
-                    graph.name_set.rev(*node_id).unwrap()
-                )?;
+                let (cid, nid) = (cluster_id, graph.name_set.rev(*node_id).unwrap());
+                if node_first_clustering {
+                    writeln!(writer, "{} {}", nid, cid)?;
+                } else {
+                    writeln!(writer, "{} {}", cid, nid)?;
+                }
             }
         }
         Ok(())
     }
 
-    pub fn write_file<P>(&self, graph: &Graph<Node>, path: P) -> anyhow::Result<()>
+    pub fn write_file<P>(
+        &self,
+        graph: &Graph<Node>,
+        path: P,
+        node_first_clustering: bool,
+    ) -> anyhow::Result<()>
     where
         P: AsRef<Path>,
     {
         let file = File::create(path)?;
         let writer = BufWriter::new(file);
-        self.write_raw(writer, graph)
+        self.write_raw(writer, graph, node_first_clustering)
+    }
+
+    pub fn retain<F>(&mut self, f: F)
+    where
+        F: FnMut(&usize, &mut Cluster) -> bool,
+    {
+        self.clusters.retain(f);
     }
 }
 
