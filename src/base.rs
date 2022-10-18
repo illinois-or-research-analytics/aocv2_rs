@@ -1,4 +1,7 @@
-use crate::utils::{self, NameSet};
+use crate::{
+    misc::OwnedSubset,
+    utils::{self, choose2, NameSet},
+};
 use ahash::AHashSet;
 use anyhow::{bail, Ok};
 use itertools::Itertools;
@@ -179,6 +182,15 @@ where
     pub fn m(&self) -> usize {
         self.m_cache
     }
+
+    pub fn owned_subset(&self, nodes: Vec<usize>) -> OwnedSubset {
+        OwnedSubset::new(nodes)
+    }
+
+    pub fn node_from_label(&'a self, label: &str) -> &'a NodeT {
+        let nid = self.retrieve(label).unwrap();
+        &self.nodes[nid]
+    }
 }
 
 impl Graph<Node> {
@@ -210,6 +222,11 @@ impl Graph<Node> {
             nodes: permanent_nodes,
             m_cache: num_edges,
         })
+    }
+
+    pub fn parse_edgelist_from_str(s: &str) -> anyhow::Result<Graph<Node>> {
+        let reader = BufReader::new(s.as_bytes());
+        Graph::parse_edgelist_from_reader(reader)
     }
 
     pub fn parse_from_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Graph<Node>> {
@@ -262,9 +279,26 @@ impl Graph<Node> {
     {
         self.degrees_inside(view).sum::<usize>() / 2
     }
+
+    pub fn count_n_m<'a, X>(&'a self, view: &'a X) -> (usize, usize)
+    where
+        X: AbstractSubset<'a>,
+    {
+        let m = self.num_edges_inside(view);
+        let n = view.num_nodes();
+        (n, m)
+    }
+
+    pub fn edge_density_inside<'a, X>(&'a self, view: &'a X) -> f64
+    where
+        X: AbstractSubset<'a>,
+    {
+        let (n, m) = self.count_n_m(view);
+        m as f64 / choose2(n) as f64
+    }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub struct Cluster {
     pub core_nodes: AHashSet<usize>,
     pub periphery_nodes: AHashSet<usize>,
@@ -491,9 +525,9 @@ impl Clustering {
 
 #[cfg(test)]
 mod tests {
-    use std::io::BufReader;
-
     use ahash::AHashSet;
+    use anyhow::Ok;
+    use std::io::BufReader;
 
     use crate::{AbstractSubset, Cluster, Graph};
 
@@ -524,5 +558,18 @@ mod tests {
         let graph = Graph::parse_edgelist_from_reader(reader).unwrap();
         assert_eq!(4, graph.n());
         assert_eq!(3, graph.m());
+    }
+
+    #[test]
+    pub fn basic_graph_subset() -> anyhow::Result<()> {
+        let edgelist = "0 1\n1 2\n2 3\n 3 4";
+        let reader = BufReader::new(edgelist.as_bytes());
+        let graph = Graph::parse_edgelist_from_reader(reader)?;
+        let subset = graph.owned_subset(vec![1, 2, 3, 4]);
+        let (n, m) = graph.count_n_m(&subset);
+        assert_eq!(4, n);
+        assert_eq!(3, m);
+        assert_eq!(graph.edge_density_inside(&subset), 0.5);
+        Ok(())
     }
 }

@@ -8,12 +8,12 @@ pub struct NodeList {
     pub node_ids: Vec<usize>,
 }
 
-pub struct NodeListAsSubset {
+pub struct OwnedSubset {
     pub node_ids: Vec<usize>,
     pub node_inclusion: AHashSet<usize>,
 }
 
-impl NodeListAsSubset {
+impl OwnedSubset {
     pub fn new(node_ids: Vec<usize>) -> Self {
         let node_inclusion = node_ids.iter().copied().collect();
         Self {
@@ -23,7 +23,7 @@ impl NodeListAsSubset {
     }
 }
 
-impl<'a> AbstractSubset<'a> for NodeListAsSubset {
+impl<'a> AbstractSubset<'a> for OwnedSubset {
     fn contains(&self, node_id: &usize) -> bool {
         self.node_inclusion.contains(node_id)
     }
@@ -55,7 +55,7 @@ impl NodeList {
         Cluster::from_iter(self.node_ids.into_iter())
     }
 
-    pub fn into_owned_subset(self) -> NodeListAsSubset {
-        NodeListAsSubset::new(self.node_ids)
+    pub fn into_owned_subset(self) -> OwnedSubset {
+        OwnedSubset::new(self.node_ids)
     }
 }

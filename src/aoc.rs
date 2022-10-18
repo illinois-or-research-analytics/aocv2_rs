@@ -97,13 +97,12 @@ impl AugmentingConfig for AugmentByDensityThreshold {
     type Augmenter = DensityThresholdAugmenter;
 
     fn augmenter(&self, bg: &Graph<Node>, c: &Cluster) -> Self::Augmenter {
-        let ls = bg.num_edges_inside(&c.core());
-        let m = bg.num_edges_inside(&c.core());
-        let n = c.core_nodes.len();
-        let density = n as f64 / choose2(n) as f64;
+        let (n, m) = bg.count_n_m(&c.core());
         DensityThresholdAugmenter {
-            threshold: self.threshold.unwrap_or(density),
-            ls,
+            threshold: self
+                .threshold
+                .unwrap_or_else(|| m as f64 / choose2(n) as f64),
+            m,
         }
     }
 }
@@ -113,6 +112,13 @@ pub trait Augmenter<T: AugmentingConfig> {
         t.augmenter(bg, c)
     }
     fn query(&mut self, bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool;
+    fn query_and_admit(&mut self, bg: &Graph<Node>, c: &mut Cluster, node: &Node) -> bool {
+        let ans = self.query(bg, c, node);
+        if ans {
+            c.add_periphery(node.id);
+        }
+        ans
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -129,7 +135,8 @@ pub fn parse_aoc_config(s: &str) -> Result<AocConfig, String> {
     let mut pc = alt((
         tuple((token("cpm"), nom::number::complete::double)).map(|(_, k)| AocConfig::Cpm(k as f64)),
         tuple((token("mod"), nom::number::complete::double)).map(|(_, k)| AocConfig::Mod(k as f64)),
-        tuple((token("density"), nom::number::complete::double)).map(|(_, k)| AocConfig::EdgeDensity(k as f64)),
+        tuple((token("density"), nom::number::complete::double))
+            .map(|(_, k)| AocConfig::EdgeDensity(k as f64)),
         token("denser").map(|_| AocConfig::Denser()),
         alt((token("m"), token("mcd"))).map(|_| AocConfig::Mcd()),
         tuple((token("k"), decimal)).map(|(_, k)| AocConfig::K(k.parse::<usize>().unwrap())),
@@ -138,7 +145,10 @@ pub fn parse_aoc_config(s: &str) -> Result<AocConfig, String> {
     if rest.is_empty() {
         Ok(config)
     } else {
-        Err(format!("Could not parse config specifying candidate addition criterion: {}", s))
+        Err(format!(
+            "Could not parse config specifying candidate addition criterion: {}",
+            s
+        ))
     }
 }
 
@@ -197,19 +207,19 @@ impl Augmenter<AugmentByK> for McdKAugmenter {
 
 #[derive(Debug, Clone)]
 struct DensityThresholdAugmenter {
-    threshold : f64,
-    ls: usize,
+    threshold: f64,
+    m: usize,
 }
 
 impl Augmenter<AugmentByDensityThreshold> for DensityThresholdAugmenter {
     fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
         let cluster_all = c.all();
         let n_prime = c.size() + 1;
-        let degree_inside = node.degree_inside(&cluster_all);
-        let m_prime = self.ls + degree_inside;
+        let d = node.degree_inside(&cluster_all);
+        let m_prime = self.m + d;
         let density_prime = m_prime as f64 / choose2(n_prime) as f64;
         if density_prime >= self.threshold {
-            self.ls = m_prime;
+            self.m = m_prime;
             true
         } else {
             false
@@ -303,13 +313,11 @@ pub fn augment_clusters_from_cli_config(
                 threshold: Some(*gamma),
             };
             augment_clusters(bg, clustering, candidate_ids, &augmenter);
-        },
+        }
         AocConfig::Denser() => {
-            let augmenter = AugmentByDensityThreshold {
-                threshold: None,
-            };
+            let augmenter = AugmentByDensityThreshold { threshold: None };
             augment_clusters(bg, clustering, candidate_ids, &augmenter);
-        },
+        }
     }
 }
 
@@ -336,9 +344,31 @@ pub fn augment_clusters<X: AugmentingConfig + Clone + Sync>(
                 .map(|&it| &bg.nodes[it])
                 .collect_vec();
             for cand in viable_candidates {
-                if augmenter.query(bg, cluster, cand) {
-                    cluster.add_periphery(cand.id);
-                }
+                augmenter.query_and_admit(bg, cluster, cand);
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AugmentByDensityThreshold, Augmenter, AugmentingConfig};
+    use crate::{Cluster, Graph};
+
+    #[test]
+    pub fn edge_density_augmenter_makes_sense() -> anyhow::Result<()> {
+        let augment_config = AugmentByDensityThreshold {
+            threshold: Some(0.5),
+        };
+        let g = Graph::parse_edgelist_from_str("0 1\n1 2\n2 3\n 3 4")?;
+        let mut c = Cluster::from_iter(vec![g.retrieve("3").unwrap(), g.retrieve("4").unwrap()]);
+        let mut augmenter = augment_config.augmenter(&g, &c);
+        assert_eq!(2, c.size());
+        assert!(augmenter.query_and_admit(&g, &mut c, g.node_from_label("2")));
+        assert_eq!(3, c.size());
+        assert!(augmenter.query_and_admit(&g, &mut c, g.node_from_label("1")));
+        assert_eq!(4, c.size());
+        assert!(!augmenter.query_and_admit(&g, &mut c, g.node_from_label("0")));
+        assert_eq!(4, c.size());
+        Ok(())
+    }
 }
