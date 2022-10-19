@@ -248,14 +248,17 @@ impl Augmenter<AugmentByCpm> for CpmAugmenter {
         // }
         let cluster_all = c.all();
         let n_prime = c.size() + 1;
-        let degree_inside = node.degree_inside(&cluster_all);
-        let m_prime = self.ls + degree_inside;
+        let d = node.degree_inside(&cluster_all);
+        if d <= 0 {
+            return false;
+        }
+        let m_prime = self.ls + d;
         let cpm_prime = m_prime as f64 - choose2(n_prime) as f64 * self.resolution;
         if cpm_prime < self.original_cpm {
             return false;
         }
         self.total_nodes += 1;
-        self.ls += degree_inside;
+        self.ls += d;
         true
     }
 }
