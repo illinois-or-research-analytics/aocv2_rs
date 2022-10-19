@@ -1,6 +1,9 @@
 use bimap::BiMap;
 use lz4::EncoderBuilder;
+use probabilistic_collections::bloom::BloomFilter;
 use serde::{Deserialize, Serialize};
+
+use crate::{AbstractSubset, Graph, Node};
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct NameSet {
@@ -58,4 +61,38 @@ where
     let mut decoder = lz4::Decoder::new(&mut file)?;
     let data = bincode::deserialize_from(&mut decoder)?;
     Ok(data)
+}
+
+#[derive(Debug)]
+pub struct NeighborhoodFilter {
+    filter: BloomFilter<usize>,
+}
+
+impl NeighborhoodFilter {
+    pub fn new<'a, X>(bg: &Graph<Node>, view: &'a X) -> Self
+    where
+        X: AbstractSubset<'a>,
+    {
+        let n = view.num_nodes();
+        let size = bg.n().min(n * 10);
+        let mut filter = BloomFilter::<usize>::new(size, 0.01);
+        for node_id in view.each_node_id() {
+            let node = &bg.nodes[*node_id];
+            for neighbor_id in &node.out_edges {
+                filter.insert(neighbor_id);
+            }
+        }
+        Self { filter }
+    }
+
+    pub fn add_neighbors_of(&mut self, bg: &Graph<Node>, node_id: usize) {
+        let node = &bg.nodes[node_id];
+        for neighbor_id in &node.out_edges {
+            self.filter.insert(neighbor_id);
+        }
+    }
+
+    pub fn is_relevant(&self, node_id: &usize) -> bool {
+        self.filter.contains(node_id)
+    }
 }

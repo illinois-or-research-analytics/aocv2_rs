@@ -1,6 +1,7 @@
 use crate::io::*;
-use crate::utils::choose2;
+use crate::utils::{choose2, NeighborhoodFilter};
 use crate::{utils, Cluster, Clustering, Graph, Node};
+use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use nom::{branch::alt, sequence::tuple, Parser};
 use rayon::prelude::*;
@@ -328,9 +329,11 @@ pub fn augment_clusters<X: AugmentingConfig + Clone + Sync>(
     augmenting_config: &X,
 ) {
     candidate_ids.sort_by_key(|&it| Reverse(bg.nodes[it].degree()));
+    let n_clusters = clustering.clusters.len() as u64;
     clustering
         .clusters
         .par_iter_mut()
+        .progress_count(n_clusters)
         .for_each(|(&cid, cluster)| {
             debug!("Augmenting cluster {} with size {}", cid, cluster.size());
             let mut augmenter = X::augmenter(augmenting_config, bg, cluster);
@@ -343,8 +346,13 @@ pub fn augment_clusters<X: AugmentingConfig + Clone + Sync>(
                 .filter(|it| !cluster_core.contains(*it))
                 .map(|&it| &bg.nodes[it])
                 .collect_vec();
+            let mut filter = NeighborhoodFilter::new(bg, &cluster.core());
             for cand in viable_candidates {
-                augmenter.query_and_admit(bg, cluster, cand);
+                if filter.is_relevant(&cand.id) {
+                    if augmenter.query_and_admit(bg, cluster, cand) {
+                        filter.add_neighbors_of(bg, cand.id);
+                    }
+                }
             }
         });
 }

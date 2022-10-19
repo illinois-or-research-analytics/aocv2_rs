@@ -1,4 +1,4 @@
-use std::{io::BufRead};
+use std::io::BufRead;
 
 use ahash::AHashSet;
 
@@ -13,7 +13,7 @@ pub struct NodeList {
 /// A mathematical subset of the graph, represented entirely
 /// as a struct including a vector of node ids (for fast iteration)
 /// and a set of node ids (for fast membership queries).
-/// Use [OwnedSubset] `new` to construct a subset from a vector of node ids.
+/// Use [`Self::new()`] to construct a subset from a vector of node ids.
 pub struct OwnedSubset {
     pub node_ids: Vec<usize>,
     pub node_inclusion: AHashSet<usize>,
