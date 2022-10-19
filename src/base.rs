@@ -8,6 +8,7 @@ use itertools::Itertools;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
+    borrow::Cow,
     collections::{hash_set, BTreeMap, BTreeSet},
     ffi::OsStr,
     fs::File,
@@ -42,7 +43,7 @@ pub trait AbstractSubset<'a> {
 
 /// A node specialized to eliminate parallel edges during construction, using sets as the underlying storage of edges.
 /// It is not designed to be the permanent representation of nodes and should be converted after building the graph.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct TransientNode {
     id: usize,
     in_edges: BTreeSet<usize>,
@@ -68,7 +69,7 @@ impl AbstractNode for TransientNode {
 
 /// The default node type, contains information both the directed and the undirected topology
 /// with storage of edges as a vector for maximum efficiency of iteration.
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Node {
     pub id: usize,
     pub in_edges: Vec<usize>,
@@ -143,7 +144,7 @@ impl TransientNode {
     }
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Graph<NodeT>
 where
     NodeT: Default + AbstractNode,
@@ -152,6 +153,8 @@ where
     pub nodes: Vec<NodeT>,
     m_cache: usize,
 }
+
+type DefaultGraph = Graph<Node>;
 
 impl<'a, NodeT> Graph<NodeT>
 where
@@ -195,7 +198,65 @@ where
     }
 }
 
+impl FromIterator<(usize, usize)> for Graph<Node> {
+    fn from_iter<T: IntoIterator<Item = (usize, usize)>>(iter: T) -> Self {
+        Graph::<Node>::from_integer_edges(iter.into_iter())
+    }
+}
+
 impl Graph<Node> {
+    // pub fn from_str_edges<'a>(edges : impl Iterator<Item = (&'a str, &'a str)>) -> Self {
+    //     let mut g : Graph<TransientNode> = Graph::default();
+    //     for (from, to) in edges {
+    //         let from_id = g.request(from);
+    //         let to_id = g.request(to);
+    //         g.nodes[from_id].add_out_edge(to_id);
+    //         g.nodes[to_id].add_in_edge(from_id);
+    //     }
+    //     let (permanent_nodes, name_set) = (
+    //         g
+    //             .nodes
+    //             .into_iter()
+    //             .map(|node| node.into_permanent())
+    //             .collect_vec(),
+    //         g.name_set,
+    //     );
+    //     let num_edges = permanent_nodes.iter().map(|n| n.edges.len()).sum::<usize>() / 2;
+    //     Graph {
+    //         name_set,
+    //         nodes: permanent_nodes,
+    //         m_cache: num_edges,
+    //     }
+    // }
+
+    pub fn from_integer_edges(edges: impl Iterator<Item = (usize, usize)>) -> Self {
+        let mut graph = Graph::<TransientNode>::default();
+        for (from, to) in edges {
+            let required_length = from.max(to) + 1;
+            if graph.nodes.len() < required_length {
+                graph.nodes.resize(required_length, Default::default());
+            }
+            graph.nodes[from].add_out_edge(to);
+            graph.nodes[to].add_in_edge(from);
+        }
+        for (id, node) in graph.nodes.iter_mut().enumerate() {
+            node.assign_id(id);
+            graph.name_set.bimap.insert(id.to_string(), id);
+        }
+        graph.name_set.next_id = graph.nodes.len();
+        let permanent_nodes = graph
+            .nodes
+            .into_iter()
+            .map(|node| node.into_permanent())
+            .collect_vec();
+        let num_edges = permanent_nodes.iter().map(|n| n.edges.len()).sum::<usize>() / 2;
+        Graph {
+            name_set: graph.name_set,
+            nodes: permanent_nodes,
+            m_cache: num_edges,
+        }
+    }
+
     pub fn parse_edgelist_from_reader<R: BufRead + Read>(reader: R) -> anyhow::Result<Graph<Node>> {
         let mut graph = Graph::<TransientNode>::default();
         for line in reader.lines() {
@@ -540,6 +601,8 @@ mod tests {
 
     use crate::{AbstractSubset, Cluster, Graph};
 
+    use super::DefaultGraph;
+
     #[test]
     pub fn clustering_can_create_view() {
         let mut c: Cluster = Cluster {
@@ -580,5 +643,12 @@ mod tests {
         assert_eq!(3, m);
         assert_eq!(graph.edge_density_inside(&subset), 0.5);
         Ok(())
+    }
+
+    #[test]
+    pub fn graph_from_edgelist() {
+        let str_g = DefaultGraph::parse_edgelist_from_str("0 1\n1 2\n2 3\n 3 4").unwrap();
+        let usize_g: DefaultGraph = vec![(0, 1), (1, 2), (2, 3), (3, 4)].into_iter().collect();
+        assert_eq!(str_g, usize_g);
     }
 }

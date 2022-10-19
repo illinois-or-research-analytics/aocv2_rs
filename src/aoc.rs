@@ -217,6 +217,9 @@ impl Augmenter<AugmentByDensityThreshold> for DensityThresholdAugmenter {
         let cluster_all = c.all();
         let n_prime = c.size() + 1;
         let d = node.degree_inside(&cluster_all);
+        if d <= 0 {
+            return false;
+        }
         let m_prime = self.m + d;
         let density_prime = m_prime as f64 / choose2(n_prime) as f64;
         if density_prime >= self.threshold {

@@ -1,3 +1,5 @@
+use rayon::prelude::IntoParallelRefIterator;
+use rayon::prelude::ParallelIterator;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -78,12 +80,13 @@ impl ClusterInformation {
         clus: &Clustering,
         quality: &AocConfig,
     ) -> Vec<Self> {
-        let mut records = Vec::new();
-        for (&k, v) in clus.clusters.iter() {
-            let mut record = Self::from_single_cluster(g, &v.core(), quality);
-            record.cid = Some(k);
-            records.push(record);
-        }
-        records
+        clus.clusters
+            .par_iter()
+            .map(|(&k, v)| {
+                let mut record = Self::from_single_cluster(g, &v.core(), quality);
+                record.cid = Some(k);
+                record
+            })
+            .collect()
     }
 }

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{AbstractSubset, Graph, Node};
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
 pub struct NameSet {
     pub next_id: usize,
     pub bimap: BiMap<String, usize>,

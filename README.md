@@ -9,7 +9,7 @@ Install the `aocluster` binary first, then
 run the following command for AOC_k with $k = 10$:
 
 ```bash
-aocluster augment -g edgelistgraph.tsv -c existing_clustering.txt --candidates list_of_candidates --mode k10 -o output.txt
+aocluster augment -g edgelistgraph.tsv -c existing_clustering.txt --candidates newline_separated_list_of_candidates --mode k10 -o output.txt
 ```
 
 ### Parameters
