@@ -1,13 +1,19 @@
-use std::io::BufRead;
+use std::{io::BufRead};
 
 use ahash::AHashSet;
 
 use crate::{AbstractSubset, Cluster, Graph, Node};
 
+/// A wrapper to a list of node ids, designed for easy construction
+/// from files (w.r.t. a graph).
 pub struct NodeList {
     pub node_ids: Vec<usize>,
 }
 
+/// A mathematical subset of the graph, represented entirely
+/// as a struct including a vector of node ids (for fast iteration)
+/// and a set of node ids (for fast membership queries).
+/// Use [OwnedSubset] `new` to construct a subset from a vector of node ids.
 pub struct OwnedSubset {
     pub node_ids: Vec<usize>,
     pub node_inclusion: AHashSet<usize>,
@@ -20,6 +26,13 @@ impl OwnedSubset {
             node_ids,
             node_inclusion,
         }
+    }
+}
+
+impl FromIterator<usize> for OwnedSubset {
+    fn from_iter<I: IntoIterator<Item = usize>>(iter: I) -> Self {
+        let node_ids = iter.into_iter().collect();
+        Self::new(node_ids)
     }
 }
 

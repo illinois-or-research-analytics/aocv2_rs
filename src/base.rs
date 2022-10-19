@@ -25,9 +25,11 @@ pub trait AbstractNode {
     fn add_in_edge(&mut self, from: usize);
 }
 
-/// An abstract representation for a specific subset of a graph.
+/// An abstract representation for a specific subset of a graph, different
+/// from a [Cluster](crate::base::Cluster).
 /// This subset needs to support two operations.
-/// First a fast query of a node existence, and secondly to iterate over all nodes.
+/// First a fast query of a node existence, and second to iterate over all nodes.
+/// See also [OwnedSubset](crate::misc::OwnedSubset).
 pub trait AbstractSubset<'a> {
     fn contains(&self, node_id: &usize) -> bool;
     type NodeIterator: Iterator<Item = &'a usize>;
@@ -298,6 +300,10 @@ impl Graph<Node> {
     }
 }
 
+/// A "cluster" not in the mathematical sense but containing
+/// both a core and a periphery, represented in hashsets.
+/// To view different parts of the cluster as mathematical subsets
+/// use the `core`, `periphery`, `all` methods.
 #[derive(Default, Debug, Clone)]
 pub struct Cluster {
     pub core_nodes: AHashSet<usize>,
@@ -322,10 +328,12 @@ impl Cluster {
         self.core_nodes.len() + self.periphery_nodes.len()
     }
 
+    /// Is the `size` 1?
     pub fn is_singleton(&self) -> bool {
         self.size() == 1
     }
 
+    /// Does the entirety of the cluster contain more than one node?
     pub fn is_non_trivial(&self) -> bool {
         self.size() > 1
     }
