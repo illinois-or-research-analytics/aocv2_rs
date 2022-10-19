@@ -5,6 +5,7 @@ use crate::{
 use ahash::AHashSet;
 use anyhow::{bail, Ok};
 use itertools::Itertools;
+use ordered_float::NotNan;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -85,11 +86,25 @@ impl Node {
         self.edges.iter().filter(move |&e| c.contains(e))
     }
 
+    pub fn edges_outside<'a, X>(&'a self, c: &'a X) -> impl Iterator<Item = &'a usize> + 'a
+    where
+        X: AbstractSubset<'a>,
+    {
+        self.edges.iter().filter(move |&e| !c.contains(e))
+    }
+
     pub fn degree_inside<'a, X>(&'a self, c: &'a X) -> usize
     where
         X: AbstractSubset<'a>,
     {
         self.edges_inside(c).count()
+    }
+
+    pub fn degree_outside<'a, X>(&'a self, c: &'a X) -> usize
+    where
+        X: AbstractSubset<'a>,
+    {
+        self.edges_outside(c).count()
     }
 
     pub fn is_relevant_to<'a, X>(&'a self, c: &'a X) -> bool
@@ -154,7 +169,7 @@ where
     m_cache: usize,
 }
 
-type DefaultGraph = Graph<Node>;
+pub type DefaultGraph = Graph<Node>;
 
 impl<'a, NodeT> Graph<NodeT>
 where
@@ -188,6 +203,10 @@ where
         self.m_cache
     }
 
+    pub fn total_degree(&self) -> usize {
+        self.m() * 2
+    }
+
     pub fn owned_subset(&self, nodes: Vec<usize>) -> OwnedSubset {
         OwnedSubset::new(nodes)
     }
@@ -203,6 +222,12 @@ impl FromIterator<(usize, usize)> for Graph<Node> {
         Graph::<Node>::from_integer_edges(iter.into_iter())
     }
 }
+
+// impl FromIterator<(&'static str, &'static str)> for Graph<Node> {
+//     fn from_iter<T: IntoIterator<Item = (&'static str, &'static str)>>(iter: T) -> Self {
+//         todo!()
+//     }
+// }
 
 impl Graph<Node> {
     // pub fn from_str_edges<'a>(edges : impl Iterator<Item = (&'a str, &'a str)>) -> Self {
@@ -358,6 +383,33 @@ impl Graph<Node> {
     {
         let (n, m) = self.count_n_m(view);
         m as f64 / choose2(n) as f64
+    }
+
+    pub fn volume_inside<'a, X>(&'a self, view: &'a X) -> usize
+    where
+        X: AbstractSubset<'a>,
+    {
+        view.each_node_id().map(|it| self.nodes[*it].degree()).sum()
+    }
+
+    pub fn cut_of<'a, X>(&'a self, view: &'a X) -> usize
+    where
+        X: AbstractSubset<'a>,
+    {
+        view.each_node_id()
+            .map(|it| self.nodes[*it].degree_outside(view))
+            .sum::<usize>()
+    }
+
+    pub fn conductance_of<'a, X>(&'a self, view: &'a X) -> f64
+    where
+        X: AbstractSubset<'a>,
+    {
+        let cut = self.cut_of(view);
+        let total_degree = self.total_degree();
+        let vol1 = self.volume_inside(view);
+        let volume = vol1.min(total_degree - vol1);
+        cut as f64 / volume as f64
     }
 }
 
@@ -590,6 +642,14 @@ impl Clustering {
         F: FnMut(&usize, &mut Cluster) -> bool,
     {
         self.clusters.retain(f);
+    }
+
+    pub fn conductance(&self, graph: &Graph<Node>) -> Option<f64> {
+        self.clusters
+            .values()
+            .map(|c| NotNan::new(graph.conductance_of(&c.all())).unwrap())
+            .min()
+            .map(|x| x.into_inner())
     }
 }
 

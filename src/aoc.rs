@@ -1,4 +1,5 @@
 use crate::io::*;
+use crate::misc::OnlineConductance;
 use crate::utils::{choose2, NeighborhoodFilter};
 use crate::{utils, Cluster, Clustering, Graph, Node};
 use indicatif::ParallelProgressIterator;
@@ -122,6 +123,67 @@ pub trait Augmenter<T: AugmentingConfig> {
     }
 }
 
+#[derive(Clone)]
+struct AugmentByMeanDegree {}
+
+#[derive(Clone)]
+struct AugmentByConductance {}
+
+#[derive(Clone)]
+struct MeanDegreeAugmenter {
+    threshold: f64,
+    ls: usize,
+}
+
+#[derive(Clone)]
+struct ConductanceAugmenter {
+    threshold: f64,
+    online_conductance: OnlineConductance,
+}
+
+impl AugmentingConfig for AugmentByMeanDegree {
+    type Augmenter = MeanDegreeAugmenter;
+    fn augmenter(&self, bg: &Graph<Node>, c: &Cluster) -> MeanDegreeAugmenter {
+        let ls = bg.num_edges_inside(&c.core());
+        let threshold = ls as f64 / c.core_nodes.len() as f64;
+        MeanDegreeAugmenter { threshold, ls }
+    }
+}
+
+impl AugmentingConfig for AugmentByConductance {
+    type Augmenter = ConductanceAugmenter;
+    fn augmenter(&self, bg: &Graph<Node>, c: &Cluster) -> ConductanceAugmenter {
+        let subset = c.core();
+        let online_conductance = OnlineConductance::new(bg, &subset);
+        ConductanceAugmenter {
+            threshold: online_conductance.conductance(),
+            online_conductance,
+        }
+    }
+}
+
+impl Augmenter<AugmentByMeanDegree> for MeanDegreeAugmenter {
+    fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
+        let ls_delta = self.ls + node.degree_inside(&c.core());
+        let n_delta = c.size() + 1;
+        if ls_delta as f64 / n_delta as f64 >= self.threshold {
+            self.ls = ls_delta;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+impl Augmenter<AugmentByConductance> for ConductanceAugmenter {
+    fn query(&mut self, bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
+        let threshold = self.threshold;
+        let oc = &mut self.online_conductance;
+        let (_, success) = oc.update_conductance_if(bg, node, &c.core(), |c| c >= threshold);
+        success
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum AocConfig {
     Mcd(),
@@ -130,6 +192,8 @@ pub enum AocConfig {
     Cpm(f64),
     EdgeDensity(f64),
     Denser(),
+    MeanDegree(),
+    Conductance(),
 }
 
 pub fn parse_aoc_config(s: &str) -> Result<AocConfig, String> {
@@ -139,6 +203,8 @@ pub fn parse_aoc_config(s: &str) -> Result<AocConfig, String> {
         tuple((token("density"), nom::number::complete::double))
             .map(|(_, k)| AocConfig::EdgeDensity(k as f64)),
         token("denser").map(|_| AocConfig::Denser()),
+        token("mean-degree").map(|_| AocConfig::MeanDegree()),
+        token("conductance").map(|_| AocConfig::Conductance()),
         alt((token("m"), token("mcd"))).map(|_| AocConfig::Mcd()),
         tuple((token("k"), decimal)).map(|(_, k)| AocConfig::K(k.parse::<usize>().unwrap())),
     ));
@@ -323,6 +389,14 @@ pub fn augment_clusters_from_cli_config(
         }
         AocConfig::Denser() => {
             let augmenter = AugmentByDensityThreshold { threshold: None };
+            augment_clusters(bg, clustering, candidate_ids, &augmenter);
+        }
+        AocConfig::MeanDegree() => {
+            let augmenter = AugmentByMeanDegree {};
+            augment_clusters(bg, clustering, candidate_ids, &augmenter);
+        }
+        AocConfig::Conductance() => {
+            let augmenter = AugmentByConductance {};
             augment_clusters(bg, clustering, candidate_ids, &augmenter);
         }
     }

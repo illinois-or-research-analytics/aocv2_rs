@@ -23,3 +23,5 @@ nom = "7"
 serde_json = "1.0"
 probabilistic-collections = "*"
 indicatif = {version = "*", features = ["rayon"]}
+ordered-float = "3.0"
+stats-cli = "3.0.1"

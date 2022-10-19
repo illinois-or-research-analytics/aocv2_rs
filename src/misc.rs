@@ -2,7 +2,7 @@ use std::io::BufRead;
 
 use ahash::AHashSet;
 
-use crate::{AbstractSubset, Cluster, Graph, Node};
+use crate::{AbstractSubset, Cluster, DefaultGraph, Graph, Node};
 
 /// A wrapper to a list of node ids, designed for easy construction
 /// from files (w.r.t. a graph).
@@ -25,6 +25,12 @@ impl OwnedSubset {
         Self {
             node_ids,
             node_inclusion,
+        }
+    }
+
+    pub fn insert(&mut self, node_id: usize) {
+        if self.node_inclusion.insert(node_id) {
+            self.node_ids.push(node_id);
         }
     }
 }
@@ -70,5 +76,76 @@ impl NodeList {
 
     pub fn into_owned_subset(self) -> OwnedSubset {
         OwnedSubset::new(self.node_ids)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OnlineConductance {
+    cut: usize,
+    vol: usize,
+    total_degree: usize,
+}
+
+impl OnlineConductance {
+    pub fn new<'a, X>(graph: &'a DefaultGraph, view: &'a X) -> Self
+    where
+        X: AbstractSubset<'a>,
+    {
+        let cut = graph.cut_of(view);
+        let vol = graph.volume_inside(view);
+        Self {
+            cut,
+            vol,
+            total_degree: graph.total_degree(),
+        }
+    }
+
+    pub fn conductance(&self) -> f64 {
+        self.cut as f64 / self.vol.min(self.total_degree - self.vol) as f64
+    }
+
+    pub fn update_conductance_if<'a, X>(
+        &mut self,
+        graph: &'a DefaultGraph,
+        node: &'a Node,
+        view: &'a X,
+        f: impl Fn(f64) -> bool,
+    ) -> (f64, bool)
+    where
+        X: AbstractSubset<'a>,
+    {
+        let cut_prime = self.cut - node.degree_inside(view) + node.degree_outside(view);
+        let vol_prime = self.vol + node.degree();
+        let conductance_prime =
+            cut_prime as f64 / vol_prime.min(self.total_degree - vol_prime) as f64;
+        let satisfied = f(conductance_prime);
+        if satisfied {
+            self.cut = cut_prime;
+            self.vol = vol_prime;
+        }
+        (conductance_prime, satisfied)
+    }
+
+    pub fn query_conductance<'a, X>(
+        &self,
+        graph: &'a DefaultGraph,
+        node: &'a Node,
+        view: &'a X,
+    ) -> f64
+    where
+        X: AbstractSubset<'a>,
+    {
+        let cut_prime = self.cut - node.degree_inside(view) + node.degree_outside(view);
+        let vol_prime = self.vol + node.degree();
+        let conductance_prime =
+            cut_prime as f64 / vol_prime.min(self.total_degree - vol_prime) as f64;
+        conductance_prime
+    }
+
+    pub fn add_node<'a, X>(&mut self, graph: &'a DefaultGraph, node: &'a Node, view: &'a X) -> f64
+    where
+        X: AbstractSubset<'a>,
+    {
+        self.update_conductance_if(graph, node, view, |_| true).0
     }
 }

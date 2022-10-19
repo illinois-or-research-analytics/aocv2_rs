@@ -1,6 +1,7 @@
 mod aoc;
 mod base;
 mod dump;
+mod graph_gen;
 mod io;
 mod misc;
 mod quality;
@@ -12,6 +13,7 @@ use std::{io::BufReader, path::PathBuf};
 use aoc::AocConfig;
 pub use base::*;
 use clap::{ArgEnum, Parser, Subcommand};
+use inc_stats::Percentiles;
 use io::CandidateSpecifier;
 use itertools::Itertools;
 use tracing::{info, warn};
@@ -112,6 +114,8 @@ enum SubCommand {
         keep_tree: bool,
         #[clap(long)]
         size_lower_bound: Option<usize>,
+        #[clap(long)]
+        percentile_lower_bound: Option<f64>,
         /// Output path
         #[clap(short, long)]
         output: PathBuf,
@@ -248,6 +252,7 @@ fn main() -> anyhow::Result<()> {
             keep_tree,
             size_lower_bound,
             output,
+            percentile_lower_bound,
         } => {
             let graph = Graph::parse_from_file(&graph)?;
             let mut clustering =
@@ -261,6 +266,14 @@ fn main() -> anyhow::Result<()> {
                     .map(|c| c.core_nodes.len())
                     .sum::<usize>()
             );
+            let percentile_size_lower_bound = percentile_lower_bound.map(|lb| {
+                let perc : Percentiles<f64> = clustering
+                    .clusters
+                    .values()
+                    .map(|c| c.size() as f64)
+                    .collect();
+                perc.percentile(lb).unwrap().unwrap()
+            });
             clustering.retain(|_cid, c| {
                 let core = c.core();
                 if !keep_tree && core.num_nodes() - 1 >= graph.num_edges_inside(&core) {
@@ -268,6 +281,11 @@ fn main() -> anyhow::Result<()> {
                 }
                 if let Some(lb) = size_lower_bound {
                     if c.size() < lb {
+                        return false;
+                    }
+                }
+                if let Some(lb) = percentile_size_lower_bound {
+                    if (c.size() as f64) < lb {
                         return false;
                     }
                 }
