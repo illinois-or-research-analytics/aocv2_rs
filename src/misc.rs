@@ -114,11 +114,12 @@ impl OnlineConductance {
     where
         X: AbstractSubset<'a>,
     {
-        let cut_prime = self.cut - node.degree_inside(view) + node.degree_outside(view);
+        let d = node.degree_inside(view);
+        let cut_prime = self.cut - d + node.degree_outside(view);
         let vol_prime = self.vol + node.degree();
         let conductance_prime =
             cut_prime as f64 / vol_prime.min(self.total_degree - vol_prime) as f64;
-        let satisfied = f(conductance_prime);
+        let satisfied = f(conductance_prime) && d > 0;
         if satisfied {
             self.cut = cut_prime;
             self.vol = vol_prime;
