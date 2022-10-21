@@ -91,7 +91,8 @@ def main(
         filemaps[p] = swap_second_suffix(input, p)
     for _, path in filemaps.items():
         assert os.path.exists(path), f"File {path} does not exist"
-    graph = nk.readGraph(graph_path, nk.Format.Edgelist, separator="\t")
+    edgelist_reader = nk.graphio.EdgeListReader("\t", 0)
+    graph = edgelist_reader.read(graph_path)
     n = graph.numberOfNodes()
     m = graph.numberOfEdges()
     log.info("graph loaded", graph=graph_path, n=n, m=m)
