@@ -267,7 +267,7 @@ fn main() -> anyhow::Result<()> {
                     .sum::<usize>()
             );
             let percentile_size_lower_bound = percentile_lower_bound.map(|lb| {
-                let perc : Percentiles<f64> = clustering
+                let perc: Percentiles<f64> = clustering
                     .clusters
                     .values()
                     .map(|c| c.size() as f64)
@@ -285,7 +285,7 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
                 if let Some(lb) = percentile_size_lower_bound {
-                    if (c.size() as f64) < lb {
+                    if (c.size() as f64) <= lb {
                         return false;
                     }
                 }

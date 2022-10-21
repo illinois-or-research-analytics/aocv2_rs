@@ -164,7 +164,11 @@ impl AugmentingConfig for AugmentByConductance {
 
 impl Augmenter<AugmentByMeanDegree> for MeanDegreeAugmenter {
     fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
-        let ls_delta = self.ls + node.degree_inside(&c.core());
+        let d = node.degree_inside(&c.core());
+        if d <= 0 {
+            return false;
+        }
+        let ls_delta = self.ls + d;
         let n_delta = c.size() + 1;
         if ls_delta as f64 / n_delta as f64 >= self.threshold {
             self.ls = ls_delta;
@@ -179,12 +183,12 @@ impl Augmenter<AugmentByConductance> for ConductanceAugmenter {
     fn query(&mut self, bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
         let threshold = self.threshold;
         let oc = &mut self.online_conductance;
-        let (_, success) = oc.update_conductance_if(bg, node, &c.core(), |c| c >= threshold);
+        let (_, success) = oc.update_conductance_if(bg, node, &c.core(), |c| c <= threshold);
         success
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AocConfig {
     Mcd(),
     K(usize),
@@ -205,7 +209,7 @@ pub fn parse_aoc_config(s: &str) -> Result<AocConfig, String> {
         token("denser").map(|_| AocConfig::Denser()),
         token("mean-degree").map(|_| AocConfig::MeanDegree()),
         token("conductance").map(|_| AocConfig::Conductance()),
-        alt((token("m"), token("mcd"))).map(|_| AocConfig::Mcd()),
+        alt((token("mcd"), token("m"))).map(|_| AocConfig::Mcd()),
         tuple((token("k"), decimal)).map(|(_, k)| AocConfig::K(k.parse::<usize>().unwrap())),
     ));
     let (rest, config) = pc(s).map_err(|e| format!("{:?}", e))?;
@@ -439,8 +443,8 @@ pub fn augment_clusters<X: AugmentingConfig + Clone + Sync>(
 
 #[cfg(test)]
 mod tests {
-    use super::{AugmentByDensityThreshold, Augmenter, AugmentingConfig};
-    use crate::{Cluster, Graph};
+    use super::{parse_aoc_config, AugmentByDensityThreshold, Augmenter, AugmentingConfig};
+    use crate::{aoc::AocConfig, Cluster, Graph};
 
     #[test]
     pub fn edge_density_augmenter_makes_sense() -> anyhow::Result<()> {
@@ -457,6 +461,29 @@ mod tests {
         assert_eq!(4, c.size());
         assert!(!augmenter.query_and_admit(&g, &mut c, g.node_from_label("0")));
         assert_eq!(4, c.size());
+        Ok(())
+    }
+
+    #[test]
+    pub fn can_parse_quality_specifier() -> anyhow::Result<()> {
+        assert_eq!(AocConfig::Mod(0.5), parse_aoc_config("mod0.5").unwrap());
+        assert_eq!(AocConfig::Cpm(0.5), parse_aoc_config("cpm0.5").unwrap());
+        assert_eq!(AocConfig::K(3), parse_aoc_config("k3").unwrap());
+        assert_eq!(AocConfig::Mcd(), parse_aoc_config("mcd").unwrap());
+        assert_eq!(AocConfig::Mcd(), parse_aoc_config("m").unwrap());
+        assert_eq!(
+            AocConfig::EdgeDensity(0.5),
+            parse_aoc_config("density0.5").unwrap()
+        );
+        assert_eq!(AocConfig::Denser(), parse_aoc_config("denser").unwrap());
+        assert_eq!(
+            AocConfig::MeanDegree(),
+            parse_aoc_config("mean-degree").unwrap()
+        );
+        assert_eq!(
+            AocConfig::Conductance(),
+            parse_aoc_config("conductance").unwrap()
+        );
         Ok(())
     }
 }

@@ -40,6 +40,7 @@ pub struct ClusterInformation {
     mcd: usize,
     modularity: f64,
     cpm: f64,
+    conductance: f64,
 }
 
 impl ClusterInformation {
@@ -62,8 +63,9 @@ impl ClusterInformation {
             .each_node_id()
             .map(|&n| g.nodes[n].degree())
             .sum::<usize>();
-        let modularity = calc_modularity_resolution(ls, ds, big_l, resolution);
+        let modularity = calc_modularity_resolution(ls, ds, big_l, 1.0);
         let cpm = calc_cpm_resolution(ls, n, resolution);
+        let conductance = g.conductance_of(c);
         Self {
             cid: None,
             n,
@@ -71,6 +73,7 @@ impl ClusterInformation {
             mcd,
             modularity,
             cpm,
+            conductance,
         }
     }
 
