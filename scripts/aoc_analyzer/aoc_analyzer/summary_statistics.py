@@ -50,8 +50,8 @@ class ClusteringStats:
         mcd = df['mcd'].tolist()
         cluster_sizes = df['n'].tolist()
         conductance = df['conductance'].tolist()
-        edge_density = [m / n ** 2 for n, m in df['n'].zip(df['m'])]
-        mean_degree = [2 * m / n for n, m in df['n'].zip(df['m'])]
+        edge_density = [m / n ** 2 for n, m in zip(df['n'], df['m'])]
+        mean_degree = [2 * m / n for n, m in zip(df['n'], df['m'])]
         return ClusteringStats(
             num_clusters=num_clusters,
             node_coverage=node_coverage,
