@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "aoc-analyzer"
+version = "0.1.0"
+description = ""
+authors = ["runeblaze <runeblaze@excite.co.jp>"]
+readme = "README.md"
+packages = [{include = "aoc_analyzer"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+networkit = "^10.0"
+typer = "^0.6.1"
+structlog = "^22.1.0"
+pandas = "^1.5.1"
+numpy = "^1.23.4"
+
+[tool.poetry.scripts]
+aoc_summary = "aoc_analyzer.summary_statistics:entry_point"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
