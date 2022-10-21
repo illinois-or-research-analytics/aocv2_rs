@@ -24,7 +24,7 @@ def summarize_dist(l):
     maximum = max(l)
     med = median(l)
     # keep only two decimal places if not integer
-    med = int(med) if med.is_integer() else round(med, 2)
+    med = int(med) if is_integer(med) else round(med, 2)
     minimum = int(minimum) if is_integer(minimum) else round(minimum, 2)
     maximum = int(maximum) if is_integer(maximum) else round(maximum, 2)
     return f"{minimum}-{med}-{maximum}"
