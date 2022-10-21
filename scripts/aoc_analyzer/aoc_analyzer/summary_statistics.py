@@ -11,10 +11,13 @@ from structlog import get_logger
 def swap_second_suffix(p : str, new_name: str) -> str:
     return ".".join(p.split(".")[:-2] + [new_name, "stats", "csv"])
 
+def is_integer(x):
+    return isinstance(x, int) or x.is_integer()
+
 def median(l):
     # returns an integer if possible
     med = np.median(l)
-    return int(med) if med.is_integer() else med
+    return int(med) if is_integer(med) else med
 
 def summarize_dist(l):
     minimum = min(l)
@@ -22,8 +25,8 @@ def summarize_dist(l):
     med = median(l)
     # keep only two decimal places if not integer
     med = int(med) if med.is_integer() else round(med, 2)
-    minimum = int(minimum) if minimum.is_integer() else round(minimum, 2)
-    maximum = int(maximum) if maximum.is_integer() else round(maximum, 2)
+    minimum = int(minimum) if is_integer(minimum) else round(minimum, 2)
+    maximum = int(maximum) if is_integer(maximum) else round(maximum, 2)
     return f"{minimum}-{med}-{maximum}"
 
 @dataclass
