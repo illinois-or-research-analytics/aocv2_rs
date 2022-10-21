@@ -9,7 +9,7 @@ import numpy as np
 from structlog import get_logger
 
 def swap_second_suffix(p : str, new_name: str) -> str:
-    return ".".join(p.split(".")[:-3] + [new_name, "stats", "csv"])
+    return ".".join(p.split(".")[:-2] + [new_name, "stats", "csv"])
 
 def median(l):
     # returns an integer if possible
