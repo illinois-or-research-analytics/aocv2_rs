@@ -69,7 +69,7 @@ class ClusteringStats:
         )
     
     def to_stats(self) -> pd.DataFrame:
-        return pd.DataFrame({
+        return pd.DataFrame([{
             'num_clusters': self.num_clusters,
             'node_coverage': self.node_coverage,
             'edge_coverage': self.edge_coverage,
@@ -80,7 +80,7 @@ class ClusteringStats:
             'conductance': summarize_dist(self.conductance),
             'edge_density': summarize_dist(self.edge_density),
             'mean_degree': summarize_dist(self.mean_degree),
-        })
+        }])
 
 def main(
     input: str = typer.Option(..., "--input", "-i"),
