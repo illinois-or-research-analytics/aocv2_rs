@@ -19,14 +19,14 @@ def median(l):
     med = np.median(l)
     return int(med) if is_integer(med) else med
 
-def summarize_dist(l):
+def summarize_dist(l, d = 2):
     minimum = min(l)
     maximum = max(l)
     med = median(l)
     # keep only two decimal places if not integer
-    med = int(med) if is_integer(med) else round(med, 2)
-    minimum = int(minimum) if is_integer(minimum) else round(minimum, 2)
-    maximum = int(maximum) if is_integer(maximum) else round(maximum, 2)
+    med = int(med) if is_integer(med) else round(med, d)
+    minimum = int(minimum) if is_integer(minimum) else round(minimum, d)
+    maximum = int(maximum) if is_integer(maximum) else round(maximum, d)
     return f"{minimum}-{med}-{maximum}"
 
 @dataclass
@@ -73,7 +73,7 @@ class ClusteringStats:
             '# clusters': self.num_clusters,
             'node cov.': self.node_coverage,
             'edge cov.': self.edge_coverage,
-            'CPM': summarize_dist(self.cpm),
+            'CPM': summarize_dist(self.cpm, 0),
             # 'modularity': summarize_dist(self.modularity),
             'MCD': summarize_dist(self.mcd),
             'cluster sizes': summarize_dist(self.cluster_sizes),
