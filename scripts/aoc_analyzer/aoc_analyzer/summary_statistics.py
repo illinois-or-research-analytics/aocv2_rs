@@ -70,16 +70,16 @@ class ClusteringStats:
     
     def to_stats(self) -> pd.DataFrame:
         return pd.DataFrame([{
-            'num_clusters': self.num_clusters,
-            'node_coverage': self.node_coverage,
-            'edge_coverage': self.edge_coverage,
-            'cpm': summarize_dist(self.cpm),
-            'modularity': summarize_dist(self.modularity),
-            'mcd': summarize_dist(self.mcd),
-            'cluster_sizes': summarize_dist(self.cluster_sizes),
+            '# clusters': self.num_clusters,
+            'node cov.': self.node_coverage,
+            'edge cov.': self.edge_coverage,
+            'CPM': summarize_dist(self.cpm),
+            # 'modularity': summarize_dist(self.modularity),
+            'MCD': summarize_dist(self.mcd),
+            'cluster sizes': summarize_dist(self.cluster_sizes),
             'conductance': summarize_dist(self.conductance),
-            'edge_density': summarize_dist(self.edge_density),
-            'mean_degree': summarize_dist(self.mean_degree),
+            'density': summarize_dist(self.edge_density),
+            'avg. degree': summarize_dist(self.mean_degree),
         }])
 
 def main(
