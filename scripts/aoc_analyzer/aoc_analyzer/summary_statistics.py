@@ -110,7 +110,8 @@ def main(
     # compute one DF with a column indicating the origin
     df = pd.concat([df.to_stats().assign(type=name) for name, df in stats.items()])
     # to LaTeX
-    print(df.to_latex(index=False))
+    # float format: percentage with 2 decimals
+    print(df.to_latex(index=False, float_format=lambda x: f"{x:.2%}"))
 
 def entry_point():
     typer.run(main)
