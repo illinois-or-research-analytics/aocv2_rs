@@ -74,7 +74,7 @@ class ClusteringStats:
             'node cov.': self.node_coverage,
             'edge cov.': self.edge_coverage,
             'CPM': summarize_dist(self.cpm, 0),
-            # 'modularity': summarize_dist(self.modularity),
+            'modularity': summarize_dist(self.modularity),
             'MCD': summarize_dist(self.mcd),
             'cluster sizes': summarize_dist(self.cluster_sizes),
             'conductance': summarize_dist(self.conductance),
@@ -112,6 +112,7 @@ def main(
     # to LaTeX
     # float format: percentage with 2 decimals
     print(df.to_latex(index=False, float_format=lambda x: f"{x:.2%}"))
+    print(df.to_csv())
 
 def entry_point():
     typer.run(main)
