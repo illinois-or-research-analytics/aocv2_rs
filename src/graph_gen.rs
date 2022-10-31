@@ -23,7 +23,6 @@ pub mod concrete_examples {
 mod tests {
     use crate::{
         misc::{OnlineConductance, OwnedSubset},
-        Cluster, Graph,
     };
     #[test]
     pub fn conductance_works() {

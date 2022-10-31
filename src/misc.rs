@@ -106,7 +106,7 @@ impl OnlineConductance {
 
     pub fn update_conductance_if<'a, X>(
         &mut self,
-        graph: &'a DefaultGraph,
+        _graph: &'a DefaultGraph,
         node: &'a Node,
         view: &'a X,
         f: impl Fn(f64) -> bool,
@@ -129,7 +129,7 @@ impl OnlineConductance {
 
     pub fn query_conductance<'a, X>(
         &self,
-        graph: &'a DefaultGraph,
+        _graph: &'a DefaultGraph,
         node: &'a Node,
         view: &'a X,
     ) -> f64
@@ -138,9 +138,8 @@ impl OnlineConductance {
     {
         let cut_prime = self.cut - node.degree_inside(view) + node.degree_outside(view);
         let vol_prime = self.vol + node.degree();
-        let conductance_prime =
-            cut_prime as f64 / vol_prime.min(self.total_degree - vol_prime) as f64;
-        conductance_prime
+        
+        cut_prime as f64 / vol_prime.min(self.total_degree - vol_prime) as f64
     }
 
     pub fn add_node<'a, X>(&mut self, graph: &'a DefaultGraph, node: &'a Node, view: &'a X) -> f64

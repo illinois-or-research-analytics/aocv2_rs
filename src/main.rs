@@ -1,6 +1,7 @@
 mod aoc;
 mod base;
 mod dump;
+mod generators;
 mod graph_gen;
 mod io;
 mod misc;
@@ -276,7 +277,7 @@ fn main() -> anyhow::Result<()> {
             });
             clustering.retain(|_cid, c| {
                 let core = c.core();
-                if !keep_tree && core.num_nodes() - 1 >= graph.num_edges_inside(&core) {
+                if !keep_tree && core.num_nodes() > graph.num_edges_inside(&core) {
                     return false;
                 }
                 if let Some(lb) = size_lower_bound {

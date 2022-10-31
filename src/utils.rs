@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{AbstractSubset, Graph, Node};
 
-#[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NameSet {
     pub next_id: usize,
     pub bimap: BiMap<String, usize>,
@@ -22,7 +22,11 @@ impl NameSet {
 }
 
 pub fn choose2(n: usize) -> usize {
-    n * (n - 1) / 2
+    if n == 0 {
+        0
+    } else {
+        n * (n - 1) / 2
+    }
 }
 
 pub fn calc_modularity(ls: usize, ds: usize, big_l: usize) -> f64 {
@@ -94,5 +98,20 @@ impl NeighborhoodFilter {
 
     pub fn is_relevant(&self, node_id: &usize) -> bool {
         self.filter.contains(node_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_choose2() {
+        assert_eq!(choose2(0), 0);
+        assert_eq!(choose2(1), 0);
+        assert_eq!(choose2(2), 1);
+        assert_eq!(choose2(3), 3);
+        assert_eq!(choose2(4), 6);
+        assert_eq!(choose2(5), 10);
     }
 }

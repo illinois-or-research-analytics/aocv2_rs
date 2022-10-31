@@ -55,14 +55,13 @@ impl AugmentingConfig for AugmentByCpm {
 
     fn augmenter(&self, bg: &Graph<Node>, c: &Cluster) -> Self::Augmenter {
         let ls = bg.num_edges_inside(&c.core());
-        let total_nodes = bg.n();
-        let cpm = ls as f64 - choose2(total_nodes) as f64 * self.resolution;
+        let total_nodes = c.size();
+        let cpm = utils::calc_cpm_resolution(ls, total_nodes, self.resolution);
         CpmAugmenter {
             original_cpm: cpm,
             resolution: self.resolution,
             total_nodes,
             ls,
-            cpm,
         }
     }
 }
@@ -82,7 +81,6 @@ impl AugmentingConfig for AugmentByMod {
         ModularityAugmenter {
             original_modularity: modularity,
             resolution: self.resolution,
-            modularity,
             total_l,
             ls,
             ds,
@@ -304,18 +302,18 @@ impl Augmenter<AugmentByDensityThreshold> for DensityThresholdAugmenter {
 struct CpmAugmenter {
     original_cpm: f64,
     resolution: f64,
-    cpm: f64,
     total_nodes: usize,
     ls: usize,
 }
 
+impl CpmAugmenter {
+    pub fn cpm(&self) -> f64 {
+        utils::calc_cpm_resolution(self.ls, self.total_nodes, self.resolution)
+    }
+}
+
 impl Augmenter<AugmentByCpm> for CpmAugmenter {
     fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
-        // let cluster_all = c.all();
-        // let d = node.edges_inside(&cluster_all).count();
-        // if (d as f64) < self.resolution * (self.total_nodes as f64) {
-        //     return false;
-        // }
         let cluster_all = c.all();
         let n_prime = c.size() + 1;
         let d = node.degree_inside(&cluster_all);
@@ -336,7 +334,6 @@ impl Augmenter<AugmentByCpm> for CpmAugmenter {
 struct ModularityAugmenter {
     original_modularity: f64,
     resolution: f64,
-    modularity: f64,
     total_l: usize,
     ls: usize,
     ds: usize,
@@ -432,10 +429,8 @@ pub fn augment_clusters<X: AugmentingConfig + Clone + Sync>(
                 .collect_vec();
             let mut filter = NeighborhoodFilter::new(bg, &cluster.core());
             for cand in viable_candidates {
-                if filter.is_relevant(&cand.id) {
-                    if augmenter.query_and_admit(bg, cluster, cand) {
-                        filter.add_neighbors_of(bg, cand.id);
-                    }
+                if filter.is_relevant(&cand.id) && augmenter.query_and_admit(bg, cluster, cand) {
+                    filter.add_neighbors_of(bg, cand.id);
                 }
             }
         });
@@ -443,8 +438,10 @@ pub fn augment_clusters<X: AugmentingConfig + Clone + Sync>(
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_aoc_config, AugmentByDensityThreshold, Augmenter, AugmentingConfig};
-    use crate::{aoc::AocConfig, Cluster, Graph};
+    use super::{
+        parse_aoc_config, AugmentByCpm, AugmentByDensityThreshold, Augmenter, AugmentingConfig,
+    };
+    use crate::{aoc::AocConfig, Cluster, DefaultGraph, Graph};
 
     #[test]
     pub fn edge_density_augmenter_makes_sense() -> anyhow::Result<()> {
@@ -461,6 +458,33 @@ mod tests {
         assert_eq!(4, c.size());
         assert!(!augmenter.query_and_admit(&g, &mut c, g.node_from_label("0")));
         assert_eq!(4, c.size());
+        Ok(())
+    }
+
+    #[test]
+    pub fn cpm_augmenter_makes_sense() -> anyhow::Result<()> {
+        let r = 0.5;
+        let augment_config = AugmentByCpm { resolution: r };
+        let g: DefaultGraph = vec![(0, 1), (1, 2), (2, 0), (3, 4), (5, 6)]
+            .into_iter()
+            .collect();
+        let mut c = Cluster::from_iter(vec![g.retrieve("0").unwrap(), g.retrieve("1").unwrap()]);
+        let mut augmenter = augment_config.augmenter(&g, &c);
+        assert_eq!(1, augmenter.ls);
+        assert_eq!(g.cpm_of(&c.core(), r), augmenter.original_cpm);
+        assert_eq!(g.cpm_of(&c.all(), r), augmenter.cpm());
+        assert_eq!(0.5, augmenter.cpm());
+        assert_eq!(2, c.size());
+        assert!(augmenter.query_and_admit(&g, &mut c, g.node_from_label("2")));
+        assert_eq!(
+            c.periphery_nodes.iter().copied().collect::<Vec<usize>>(),
+            vec![g.node_from_label("2").id]
+        );
+        assert_eq!(g.cpm_of(&c.all(), r), augmenter.cpm());
+        assert_eq!(3, c.size());
+        assert!(!augmenter.query_and_admit(&g, &mut c, g.node_from_label("3")));
+        assert_eq!(3, c.size());
+        assert_eq!(g.cpm_of(&c.all(), r), augmenter.cpm());
         Ok(())
     }
 

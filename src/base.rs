@@ -9,7 +9,6 @@ use ordered_float::NotNan;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
-    borrow::Cow,
     collections::{hash_set, BTreeMap, BTreeSet},
     ffi::OsStr,
     fs::File,
@@ -70,7 +69,7 @@ impl AbstractNode for TransientNode {
 
 /// The default node type, contains information both the directed and the undirected topology
 /// with storage of edges as a vector for maximum efficiency of iteration.
-#[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Node {
     pub id: usize,
     pub in_edges: Vec<usize>,
@@ -159,7 +158,7 @@ impl TransientNode {
     }
 }
 
-#[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Graph<NodeT>
 where
     NodeT: Default + AbstractNode,
@@ -223,37 +222,7 @@ impl FromIterator<(usize, usize)> for Graph<Node> {
     }
 }
 
-// impl FromIterator<(&'static str, &'static str)> for Graph<Node> {
-//     fn from_iter<T: IntoIterator<Item = (&'static str, &'static str)>>(iter: T) -> Self {
-//         todo!()
-//     }
-// }
-
 impl Graph<Node> {
-    // pub fn from_str_edges<'a>(edges : impl Iterator<Item = (&'a str, &'a str)>) -> Self {
-    //     let mut g : Graph<TransientNode> = Graph::default();
-    //     for (from, to) in edges {
-    //         let from_id = g.request(from);
-    //         let to_id = g.request(to);
-    //         g.nodes[from_id].add_out_edge(to_id);
-    //         g.nodes[to_id].add_in_edge(from_id);
-    //     }
-    //     let (permanent_nodes, name_set) = (
-    //         g
-    //             .nodes
-    //             .into_iter()
-    //             .map(|node| node.into_permanent())
-    //             .collect_vec(),
-    //         g.name_set,
-    //     );
-    //     let num_edges = permanent_nodes.iter().map(|n| n.edges.len()).sum::<usize>() / 2;
-    //     Graph {
-    //         name_set,
-    //         nodes: permanent_nodes,
-    //         m_cache: num_edges,
-    //     }
-    // }
-
     pub fn from_integer_edges(edges: impl Iterator<Item = (usize, usize)>) -> Self {
         let mut graph = Graph::<TransientNode>::default();
         for (from, to) in edges {
@@ -410,6 +379,14 @@ impl Graph<Node> {
         let vol1 = self.volume_inside(view);
         let volume = vol1.min(total_degree - vol1);
         cut as f64 / volume as f64
+    }
+
+    pub fn cpm_of<'a, X>(&'a self, view: &'a X, resolution: f64) -> f64
+    where
+        X: AbstractSubset<'a>,
+    {
+        let ls = self.num_edges_inside(view);
+        utils::calc_cpm_resolution(ls, view.num_nodes(), resolution)
     }
 }
 
