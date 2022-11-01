@@ -437,12 +437,14 @@ pub fn augment_clusters_local_expand<X: AugmentingConfig + Clone + Sync>(
                     pq.push(*n, Reverse(*m));
                 }
             });
+            let mut considered : AHashSet<usize> = AHashSet::new();
             while let Some((n, Reverse(_))) = pq.pop() {
                 let cand = &bg.nodes[n];
+                considered.insert(n);
                 if augmenter.query_and_admit(bg, cluster, cand) {
                     cand.edges
                         .iter()
-                        .filter(|it| !cluster.contains(*it))
+                        .filter(|it| !cluster.contains(*it) && !considered.contains(it))
                         .for_each(|it| {
                             // if is already in the queue, update the priority
                             if viable_candidates.contains(it) {
