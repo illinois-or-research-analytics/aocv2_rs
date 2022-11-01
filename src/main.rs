@@ -17,12 +17,17 @@ use clap::{ArgEnum, Parser, Subcommand};
 use inc_stats::Percentiles;
 use io::CandidateSpecifier;
 use itertools::Itertools;
+use shadow_rs::shadow;
 use tracing::{info, warn};
 
-use crate::aoc::augment_clusters_from_cli_config;
+use crate::aoc::{
+    augment_clusters_from_cli_config, ExpandStrategy, LegacyExpandStrategy, LocalExpandStrategy,
+};
 use crate::dump::dump_graph_to_json;
 use crate::misc::NodeList;
 use crate::quality::ClusterInformation;
+
+shadow!(build);
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum, Debug)]
 pub enum AocMode {
@@ -30,8 +35,14 @@ pub enum AocMode {
     K,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum, Debug)]
+pub enum ExpandMode {
+    Legacy,
+    Local,
+}
+
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[clap(author, version, about, long_about = None, long_version = build::CLAP_LONG_VERSION)]
 struct Args {
     #[clap(subcommand)]
     cmd: SubCommand,
@@ -49,10 +60,13 @@ enum SubCommand {
         /// Path to the clustering file
         #[clap(short, long)]
         clustering: PathBuf,
+        /// The cluster is in node_id<tab>cluster_id format as opposed to the other way
         #[clap(long)]
         node_first_clustering: bool,
         #[clap(short, long, parse(try_from_str = aoc::parse_aoc_config))]
         mode: AocConfig,
+        #[clap(short, long, arg_enum, default_value_t = ExpandMode::Legacy)]
+        strategy: ExpandMode,
         #[clap(long, parse(try_from_str = io::parse_specifier))]
         candidates: Option<CandidateSpecifier>,
         #[clap(short, long)]
@@ -149,6 +163,7 @@ fn main() -> anyhow::Result<()> {
             mode,
             candidates,
             output,
+            strategy,
         } => {
             let config = mode;
             info!("Augmenting clustering with config: {:?}", config);
@@ -195,7 +210,24 @@ fn main() -> anyhow::Result<()> {
                 now.elapsed()
             );
             let now = Instant::now();
-            augment_clusters_from_cli_config(&graph, &mut clustering, &mut candidates, &config);
+            match strategy {
+                ExpandMode::Legacy => {
+                    augment_clusters_from_cli_config::<LegacyExpandStrategy>(
+                        &graph,
+                        &mut clustering,
+                        &mut candidates,
+                        &config,
+                    );
+                }
+                ExpandMode::Local => {
+                    augment_clusters_from_cli_config::<LocalExpandStrategy>(
+                        &graph,
+                        &mut clustering,
+                        &mut candidates,
+                        &config,
+                    );
+                }
+            }
             info!("Clusters augmented in {:?}", now.elapsed());
             clustering.write_file(&graph, &output, node_first_clustering)?;
         }

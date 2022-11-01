@@ -21,9 +21,7 @@ pub mod concrete_examples {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        misc::{OnlineConductance, OwnedSubset},
-    };
+    use crate::misc::{OnlineConductance, OwnedSubset};
     #[test]
     pub fn conductance_works() {
         let g = super::concrete_examples::wikipedia_conductance_graph();

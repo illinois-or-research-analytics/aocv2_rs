@@ -138,7 +138,7 @@ impl OnlineConductance {
     {
         let cut_prime = self.cut - node.degree_inside(view) + node.degree_outside(view);
         let vol_prime = self.vol + node.degree();
-        
+
         cut_prime as f64 / vol_prime.min(self.total_degree - vol_prime) as f64
     }
 

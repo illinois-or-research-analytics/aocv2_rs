@@ -388,6 +388,21 @@ impl Graph<Node> {
         let ls = self.num_edges_inside(view);
         utils::calc_cpm_resolution(ls, view.num_nodes(), resolution)
     }
+
+    // pub fn frontier_of<'a, X>(&'a self, view: &'a X) -> impl Iterator<Item = &'a Node>
+    // where
+    //     X: AbstractSubset<'a> {
+    //     let mut seen = AHashSet::new();
+    //     view.each_node_id()
+    //         .map(move |it| &self.nodes[*it])
+    //         .flat_map(|it| it.edges.iter())
+    //         .filter(move |it| {
+    //             let ret = !seen.contains(it) &&! view.contains(*it);
+    //             seen.insert(*it);
+    //             ret
+    //         })
+    //         .map(move |it| &self.nodes[*it])
+    // }
 }
 
 /// A "cluster" not in the mathematical sense but actually two sets
@@ -427,6 +442,10 @@ impl Cluster {
     /// Does the entirety of the cluster contain more than one node?
     pub fn is_non_trivial(&self) -> bool {
         self.size() > 1
+    }
+
+    pub fn contains(&self, node: &usize) -> bool {
+        self.core_nodes.contains(node) || self.periphery_nodes.contains(node)
     }
 }
 
