@@ -437,8 +437,9 @@ pub fn augment_clusters_local_expand<X: AugmentingConfig + Clone + Sync>(
                     pq.push(*n, Reverse(*m));
                 }
             });
-            let mut considered : AHashSet<usize> = AHashSet::new();
-            while let Some((n, Reverse(_))) = pq.pop() {
+            let mut considered: AHashSet<usize> = AHashSet::new();
+            let mut graveyard: AHashMap<usize, usize> = AHashMap::new();
+            while let Some((n, Reverse(m))) = pq.pop() {
                 let cand = &bg.nodes[n];
                 considered.insert(n);
                 if augmenter.query_and_admit(bg, cluster, cand) {
@@ -451,10 +452,13 @@ pub fn augment_clusters_local_expand<X: AugmentingConfig + Clone + Sync>(
                                 if let Some(Reverse(m)) = pq.get_priority(it) {
                                     pq.change_priority(it, Reverse(m + 1));
                                 } else {
-                                    pq.push(*it, Reverse(1));
+                                    let old_degree = graveyard.get(it).copied().unwrap_or(0usize);
+                                    pq.push(*it, Reverse(old_degree + 1));
                                 }
                             }
                         });
+                } else {
+                    graveyard.insert(n, m);
                 }
             }
         })
