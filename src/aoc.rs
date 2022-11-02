@@ -458,16 +458,16 @@ pub fn augment_clusters_local_expand<
                         *neighborhood_multiplicities.entry(*n).or_insert(0) += 1;
                     }
                 });
-            let mut pq: PriorityQueue<usize, Reverse<usize>> = PriorityQueue::new();
+            let mut pq: PriorityQueue<usize, Reverse<(usize, usize)>> = PriorityQueue::new();
             neighborhood_multiplicities.iter().for_each(|(n, m)| {
                 if candidates.contains(n) {
-                    pq.push(*n, Reverse(*m));
+                    pq.push(*n, Reverse((*m, *n)));
                 }
             });
             // let mut considered: AHashSet<usize> = AHashSet::new();
             let mut graveyard: AHashMap<usize, usize> = AHashMap::new();
             let mut stopping_criterion = 0usize;
-            while let Some((n, Reverse(m))) = pq.pop() {
+            while let Some((n, Reverse((m, _)))) = pq.pop() {
                 let cand = &bg.nodes[n];
                 if m <= stopping_criterion {
                     break;
@@ -479,11 +479,11 @@ pub fn augment_clusters_local_expand<
                         .for_each(|it| {
                             // if is already in the queue, update the priority
                             if candidates.contains(it) {
-                                if let Some(Reverse(m)) = pq.get_priority(it) {
-                                    pq.change_priority(it, Reverse(m + 1));
+                                if let Some(Reverse((m, _))) = pq.get_priority(it) {
+                                    pq.change_priority(it, Reverse((m + 1, *it)));
                                 } else {
                                     let old_degree = graveyard.get(it).copied().unwrap_or(0usize);
-                                    pq.push(*it, Reverse(old_degree + 1));
+                                    pq.push(*it, Reverse((old_degree + 1, *it)));
                                 }
                             }
                         });
