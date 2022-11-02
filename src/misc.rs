@@ -35,6 +35,35 @@ impl OwnedSubset {
     }
 }
 
+/// A ``subset'' of nodes containing everything
+pub struct UniverseSet {
+    nodes: Vec<usize>, // FIXME: definitely do not need to store this
+}
+
+impl UniverseSet {
+    pub fn new(max_nodes: usize) -> Self {
+        Self {
+            nodes: (0..max_nodes).collect(),
+        }
+    }
+
+    pub fn new_from_graph(g: &Graph<Node>) -> Self {
+        Self::new(g.n())
+    }
+}
+
+impl<'a> AbstractSubset<'a> for UniverseSet {
+    fn contains(&self, _node_id: &usize) -> bool {
+        true
+    }
+
+    fn each_node_id(&'a self) -> Self::NodeIterator {
+        self.nodes.iter()
+    }
+
+    type NodeIterator = std::slice::Iter<'a, usize>;
+}
+
 impl FromIterator<usize> for OwnedSubset {
     fn from_iter<I: IntoIterator<Item = usize>>(iter: I) -> Self {
         let node_ids = iter.into_iter().collect();
@@ -79,6 +108,7 @@ impl NodeList {
     }
 }
 
+/// A helper structure to calculate conductance of growing clusters online
 #[derive(Clone, Debug)]
 pub struct OnlineConductance {
     cut: usize,

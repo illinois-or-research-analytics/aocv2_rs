@@ -1,6 +1,6 @@
-use crate::io::*;
 use crate::misc::OnlineConductance;
 use crate::utils::{choose2, NeighborhoodFilter};
+use crate::{io::*, AbstractSubset};
 use crate::{utils, Cluster, Clustering, Graph, Node};
 use ahash::{AHashMap, AHashSet};
 use indicatif::ParallelProgressIterator;
@@ -121,6 +121,9 @@ pub trait Augmenter<T: AugmentingConfig> {
         }
         ans
     }
+    fn allows_earlystopping() -> bool {
+        false
+    }
 }
 
 #[derive(Clone)]
@@ -176,6 +179,10 @@ impl Augmenter<AugmentByMeanDegree> for MeanDegreeAugmenter {
         } else {
             false
         }
+    }
+
+    fn allows_earlystopping() -> bool {
+        true
     }
 }
 
@@ -268,11 +275,19 @@ impl Augmenter<AugmentByMcd> for McdKAugmenter {
     fn query(&mut self, bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
         McdKAugmenter::query(self, bg, c, node)
     }
+
+    fn allows_earlystopping() -> bool {
+        true
+    }
 }
 
 impl Augmenter<AugmentByK> for McdKAugmenter {
     fn query(&mut self, bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
         McdKAugmenter::query(self, bg, c, node)
+    }
+
+    fn allows_earlystopping() -> bool {
+        true
     }
 }
 
@@ -298,6 +313,10 @@ impl Augmenter<AugmentByDensityThreshold> for DensityThresholdAugmenter {
         } else {
             false
         }
+    }
+
+    fn allows_earlystopping() -> bool {
+        true
     }
 }
 
@@ -331,6 +350,10 @@ impl Augmenter<AugmentByCpm> for CpmAugmenter {
         self.ls += d;
         true
     }
+
+    fn allows_earlystopping() -> bool {
+        true
+    }
 }
 
 struct ModularityAugmenter {
@@ -357,63 +380,67 @@ impl Augmenter<AugmentByMod> for ModularityAugmenter {
     }
 }
 
-pub fn augment_clusters_from_cli_config<X: ExpandStrategy>(
-    bg: &Graph<Node>,
+pub fn augment_clusters_from_cli_config<'a, X: ExpandStrategy, S: AbstractSubset<'a> + Sync>(
+    bg: &'a Graph<Node>,
     clustering: &mut Clustering,
-    candidate_ids: &mut [usize],
+    candidates: &'a S,
     config: &AocConfig,
 ) {
     match config {
         AocConfig::Mcd() => {
             let augmenter = AugmentByMcd {};
-            X::expand(bg, clustering, candidate_ids, &augmenter);
+            X::expand(bg, clustering, candidates, &augmenter);
         }
         AocConfig::K(k) => {
             let augmenter = AugmentByK { k: *k };
-            X::expand(bg, clustering, candidate_ids, &augmenter);
+            X::expand(bg, clustering, candidates, &augmenter);
         }
         AocConfig::Mod(resolution) => {
             let augmenter = AugmentByMod {
                 resolution: *resolution,
             };
-            X::expand(bg, clustering, candidate_ids, &augmenter);
+            X::expand(bg, clustering, candidates, &augmenter);
         }
         AocConfig::Cpm(resolution) => {
             let augmenter = AugmentByCpm {
                 resolution: *resolution,
             };
-            X::expand(bg, clustering, candidate_ids, &augmenter);
+            X::expand(bg, clustering, candidates, &augmenter);
         }
         AocConfig::EdgeDensity(gamma) => {
             let augmenter = AugmentByDensityThreshold {
                 threshold: Some(*gamma),
             };
-            X::expand(bg, clustering, candidate_ids, &augmenter);
+            X::expand(bg, clustering, candidates, &augmenter);
         }
         AocConfig::Denser() => {
             let augmenter = AugmentByDensityThreshold { threshold: None };
-            X::expand(bg, clustering, candidate_ids, &augmenter);
+            X::expand(bg, clustering, candidates, &augmenter);
         }
         AocConfig::MeanDegree() => {
             let augmenter = AugmentByMeanDegree {};
-            X::expand(bg, clustering, candidate_ids, &augmenter);
+            X::expand(bg, clustering, candidates, &augmenter);
         }
         AocConfig::Conductance() => {
             let augmenter = AugmentByConductance {};
-            X::expand(bg, clustering, candidate_ids, &augmenter);
+            X::expand(bg, clustering, candidates, &augmenter);
         }
     }
 }
 
 // FIXME: this is duplicate code with the normal `augment_clusters` function
-pub fn augment_clusters_local_expand<X: AugmentingConfig + Clone + Sync>(
-    bg: &Graph<Node>,
+pub fn augment_clusters_local_expand<
+    'a,
+    X: AugmentingConfig + Clone + Sync,
+    S: AbstractSubset<'a> + Sync,
+>(
+    bg: &'a Graph<Node>,
     clustering: &mut Clustering,
-    candidate_ids: &mut [usize],
+    candidates: &S,
     augmenting_config: &X,
 ) {
     let n_clusters = clustering.clusters.len() as u64;
-    let viable_candidates: AHashSet<usize> = AHashSet::from_iter(candidate_ids.iter().cloned());
+    // let viable_candidates: AHashSet<usize> = AHashSet::from_iter(candidate_ids.iter().cloned());
     clustering
         .clusters
         .par_iter_mut()
@@ -433,22 +460,25 @@ pub fn augment_clusters_local_expand<X: AugmentingConfig + Clone + Sync>(
                 });
             let mut pq: PriorityQueue<usize, Reverse<usize>> = PriorityQueue::new();
             neighborhood_multiplicities.iter().for_each(|(n, m)| {
-                if viable_candidates.contains(n) {
+                if candidates.contains(n) {
                     pq.push(*n, Reverse(*m));
                 }
             });
             // let mut considered: AHashSet<usize> = AHashSet::new();
             let mut graveyard: AHashMap<usize, usize> = AHashMap::new();
+            let mut stopping_criterion = 0usize;
             while let Some((n, Reverse(m))) = pq.pop() {
                 let cand = &bg.nodes[n];
-                // considered.insert(n);
+                if m <= stopping_criterion {
+                    break;
+                }
                 if augmenter.query_and_admit(bg, cluster, cand) {
                     cand.edges
                         .iter()
                         .filter(|it| !cluster.contains(*it))
                         .for_each(|it| {
                             // if is already in the queue, update the priority
-                            if viable_candidates.contains(it) {
+                            if candidates.contains(it) {
                                 if let Some(Reverse(m)) = pq.get_priority(it) {
                                     pq.change_priority(it, Reverse(m + 1));
                                 } else {
@@ -459,17 +489,22 @@ pub fn augment_clusters_local_expand<X: AugmentingConfig + Clone + Sync>(
                         });
                 } else {
                     graveyard.insert(n, m);
+                    let can_earlystop = X::Augmenter::allows_earlystopping();
+                    if can_earlystop {
+                        break;
+                    }
                 }
             }
         })
 }
 
-pub fn augment_clusters<X: AugmentingConfig + Clone + Sync>(
-    bg: &Graph<Node>,
+pub fn augment_clusters<'a, X: AugmentingConfig + Clone + Sync, S: AbstractSubset<'a> + Sync>(
+    bg: &'a Graph<Node>,
     clustering: &mut Clustering,
-    candidate_ids: &mut [usize],
+    candidates: &'a S,
     augmenting_config: &X,
 ) {
+    let mut candidate_ids = candidates.each_node_id().copied().collect_vec();
     candidate_ids.sort_by_key(|&it| Reverse(bg.nodes[it].degree()));
     let n_clusters = clustering.clusters.len() as u64;
     clustering
@@ -498,10 +533,10 @@ pub fn augment_clusters<X: AugmentingConfig + Clone + Sync>(
 }
 
 pub trait ExpandStrategy {
-    fn expand<X: AugmentingConfig + Clone + Sync>(
-        bg: &Graph<Node>,
+    fn expand<'a, X: AugmentingConfig + Clone + Sync, S: AbstractSubset<'a> + Sync>(
+        bg: &'a Graph<Node>,
         clustering: &mut Clustering,
-        candidate_ids: &mut [usize],
+        candidate_ids: &'a S,
         augmenting_config: &X,
     ) -> ();
 }
@@ -510,10 +545,10 @@ pub struct LegacyExpandStrategy {}
 pub struct LocalExpandStrategy {}
 
 impl ExpandStrategy for LegacyExpandStrategy {
-    fn expand<X: AugmentingConfig + Clone + Sync>(
-        bg: &Graph<Node>,
+    fn expand<'a, X: AugmentingConfig + Clone + Sync, S: AbstractSubset<'a> + Sync>(
+        bg: &'a Graph<Node>,
         clustering: &mut Clustering,
-        candidate_ids: &mut [usize],
+        candidate_ids: &'a S,
         augmenting_config: &X,
     ) -> () {
         augment_clusters(bg, clustering, candidate_ids, augmenting_config);
@@ -521,10 +556,10 @@ impl ExpandStrategy for LegacyExpandStrategy {
 }
 
 impl ExpandStrategy for LocalExpandStrategy {
-    fn expand<X: AugmentingConfig + Clone + Sync>(
-        bg: &Graph<Node>,
+    fn expand<'a, X: AugmentingConfig + Clone + Sync, S: AbstractSubset<'a> + Sync>(
+        bg: &'a Graph<Node>,
         clustering: &mut Clustering,
-        candidate_ids: &mut [usize],
+        candidate_ids: &'a S,
         augmenting_config: &X,
     ) -> () {
         augment_clusters_local_expand(bg, clustering, candidate_ids, augmenting_config);

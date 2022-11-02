@@ -24,7 +24,7 @@ use crate::aoc::{
     augment_clusters_from_cli_config, ExpandStrategy, LegacyExpandStrategy, LocalExpandStrategy,
 };
 use crate::dump::dump_graph_to_json;
-use crate::misc::NodeList;
+use crate::misc::{NodeList, OwnedSubset, UniverseSet};
 use crate::quality::ClusterInformation;
 
 shadow!(build);
@@ -65,7 +65,7 @@ enum SubCommand {
         node_first_clustering: bool,
         #[clap(short, long, parse(try_from_str = aoc::parse_aoc_config))]
         mode: AocConfig,
-        #[clap(short, long, arg_enum, default_value_t = ExpandMode::Legacy)]
+        #[clap(short, long, arg_enum, default_value_t = ExpandMode::Local)]
         strategy: ExpandMode,
         #[clap(long, parse(try_from_str = io::parse_specifier))]
         candidates: Option<CandidateSpecifier>,
@@ -137,6 +137,11 @@ enum SubCommand {
     },
 }
 
+enum SubsetVariant {
+    Owned(OwnedSubset),
+    Universe(UniverseSet),
+}
+
 fn main() -> anyhow::Result<()> {
     // for benchmarking
     let now = Instant::now();
@@ -190,42 +195,55 @@ fn main() -> anyhow::Result<()> {
             let now = Instant::now();
             let candidates = candidates.unwrap_or(CandidateSpecifier::NonSingleton(2));
             info!("Candidates specified as: {:?}", candidates);
-            let mut candidates = match candidates {
-                CandidateSpecifier::NonSingleton(lb) => clustering
-                    .clusters
-                    .values()
-                    .into_iter()
-                    .filter(|c| c.size() >= lb)
-                    .flat_map(|cluster| cluster.core_nodes.iter())
-                    .copied()
-                    .collect_vec(),
-                CandidateSpecifier::File(p) => BufReader::new(std::fs::File::open(p)?)
-                    .lines()
-                    .map(|l| graph.retrieve(l.unwrap().trim()).unwrap())
-                    .collect_vec(),
+            let mut candidates: SubsetVariant = match candidates {
+                CandidateSpecifier::NonSingleton(lb) => {
+                    SubsetVariant::Owned(OwnedSubset::from_iter(
+                        clustering
+                            .clusters
+                            .values()
+                            .into_iter()
+                            .filter(|c| c.size() >= lb)
+                            .flat_map(|cluster| cluster.core_nodes.iter())
+                            .copied()
+                            .collect_vec(),
+                    ))
+                }
+                CandidateSpecifier::File(p) => SubsetVariant::Owned(OwnedSubset::from_iter(
+                    BufReader::new(std::fs::File::open(p)?)
+                        .lines()
+                        .map(|l| graph.retrieve(l.unwrap().trim()).unwrap())
+                        .collect_vec(),
+                )),
+                CandidateSpecifier::Everything() => {
+                    SubsetVariant::Universe(UniverseSet::new_from_graph(&graph))
+                }
             };
             info!(
                 "Candidates ({} of them) loaded in {:?}",
-                candidates.len(),
+                match &candidates {
+                    SubsetVariant::Owned(s) => s.num_nodes(),
+                    SubsetVariant::Universe(s) => s.num_nodes(),
+                },
                 now.elapsed()
             );
             let now = Instant::now();
-            match strategy {
-                ExpandMode::Legacy => {
-                    augment_clusters_from_cli_config::<LegacyExpandStrategy>(
-                        &graph,
-                        &mut clustering,
-                        &mut candidates,
-                        &config,
-                    );
+            let legacy_owned =
+                &augment_clusters_from_cli_config::<LegacyExpandStrategy, OwnedSubset>;
+            let legacy_uni = &augment_clusters_from_cli_config::<LegacyExpandStrategy, UniverseSet>;
+            let local_owned = &augment_clusters_from_cli_config::<LocalExpandStrategy, OwnedSubset>;
+            let local_uni = &augment_clusters_from_cli_config::<LocalExpandStrategy, UniverseSet>;
+            match (candidates, strategy) {
+                (SubsetVariant::Owned(s), ExpandMode::Legacy) => {
+                    legacy_owned(&graph, &mut clustering, &s, &config)
                 }
-                ExpandMode::Local => {
-                    augment_clusters_from_cli_config::<LocalExpandStrategy>(
-                        &graph,
-                        &mut clustering,
-                        &mut candidates,
-                        &config,
-                    );
+                (SubsetVariant::Owned(s), ExpandMode::Local) => {
+                    local_owned(&graph, &mut clustering, &s, &config)
+                }
+                (SubsetVariant::Universe(s), ExpandMode::Legacy) => {
+                    legacy_uni(&graph, &mut clustering, &s, &config)
+                }
+                (SubsetVariant::Universe(s), ExpandMode::Local) => {
+                    local_uni(&graph, &mut clustering, &s, &config)
                 }
             }
             info!("Clusters augmented in {:?}", now.elapsed());
