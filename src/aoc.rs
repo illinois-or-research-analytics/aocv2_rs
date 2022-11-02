@@ -277,7 +277,7 @@ impl Augmenter<AugmentByMcd> for McdKAugmenter {
     }
 
     fn allows_earlystopping() -> bool {
-        true
+        false // unfortunately MCD-based is based on the connectivity of the original cluster, so no
     }
 }
 
@@ -287,7 +287,7 @@ impl Augmenter<AugmentByK> for McdKAugmenter {
     }
 
     fn allows_earlystopping() -> bool {
-        true
+        false
     }
 }
 
