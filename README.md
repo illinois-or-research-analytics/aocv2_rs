@@ -50,7 +50,7 @@ Boldfaced parameters are required. Notation such as `{k:int}` denote a parameter
 | **`-m {mode:enum(mode)}`** | Quality used for augmentation. See [here](#quality-measures). |
 | **`-o {outputpath:string}`** | Path to the output clustering, same format as the input clustering |
 | `--attention {a:int}` | Defaults to `11`. Clusters below this size will not be augmented. |
-| `--candidates {c:candidate_spec}` | Defaults to `cluster_size:2`. See [here](#specifying-candidates). |
+| `--candidates {c:candidate_spec}` | Defaults to `all`. See [here](#specifying-candidates). |
 | `-s {strategy:enum(strategy)}` | What strategy to maximize the clusters. Defaults to `local`. See [here](#expansion-strategy). |
 | `[--legacy-cid-nid-order]` | Is the input clustering in `cid nid` format (AOC legacy)? |
 
