@@ -185,3 +185,9 @@ To install the binary in path:
 ```bash
 cargo install --path .
 ```
+
+## Citations
+
+See also the paper for the previous version of AOC:
+
+> Jakatdar, A., Liu, B., Warnow, T., & Chacko, G. (2022). AOC; Assembling Overlapping Communities. arXiv preprint arXiv:2208.04842.
