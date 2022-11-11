@@ -441,8 +441,7 @@ pub fn augment_clusters_local_expand<
 ) {
     let n_clusters = clustering.clusters.len() as u64;
     clustering
-        .clusters
-        .par_iter_mut()
+        .worthy_clusters()
         .progress_count(n_clusters)
         .for_each(|(&cid, cluster)| {
             debug!("Augmenting cluster {} with size {}", cid, cluster.size());
@@ -507,8 +506,7 @@ pub fn augment_clusters<'a, X: AugmentingConfig + Clone + Sync, S: AbstractSubse
     candidate_ids.sort_by_key(|&it| Reverse(bg.nodes[it].degree()));
     let n_clusters = clustering.clusters.len() as u64;
     clustering
-        .clusters
-        .par_iter_mut()
+        .worthy_clusters()
         .progress_count(n_clusters)
         .for_each(|(&cid, cluster)| {
             debug!("Augmenting cluster {} with size {}", cid, cluster.size());

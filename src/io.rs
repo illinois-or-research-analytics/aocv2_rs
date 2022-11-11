@@ -13,6 +13,7 @@ pub enum CandidateSpecifier {
     NonSingleton(usize),
     File(String),
     Everything(),
+    Degree(usize),
 }
 
 pub fn token<'a>(i: &'a str) -> impl Fn(&'a str) -> IResult<&'a str, &'a str> {
@@ -30,6 +31,8 @@ pub fn parse_specifier(s: &str) -> Result<CandidateSpecifier, String> {
     let mut ps = alt((
         tuple((token("cluster_size"), token(":"), decimal))
             .map(|(_, _, n)| CandidateSpecifier::NonSingleton(n.parse().unwrap())),
+        tuple((token("degree"), token(":"), decimal))
+            .map(|(_, _, n)| CandidateSpecifier::Degree(n.parse().unwrap())),
         token("all").map(|_| CandidateSpecifier::Everything()),
         many1(anychar).map(|f| CandidateSpecifier::File(f.into_iter().collect())),
     ));

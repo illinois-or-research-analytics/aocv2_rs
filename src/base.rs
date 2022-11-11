@@ -531,6 +531,7 @@ impl<'a> Cluster {
 
 pub struct Clustering {
     pub clusters: BTreeMap<usize, Cluster>,
+    pub attention: usize,
 }
 
 impl Clustering {
@@ -551,9 +552,9 @@ impl Clustering {
                 .next()
                 .ok_or_else(|| anyhow::anyhow!("missing node_name"))?;
             let (cluster_name, node_name) = if reverse {
-                (node_name, cluster_name)
-            } else {
                 (cluster_name, node_name)
+            } else {
+                (node_name, cluster_name)
             };
             let cluster_id = cluster_name
                 .parse::<usize>()
@@ -581,7 +582,10 @@ impl Clustering {
         for key in singleton_keys.iter() {
             clusters.remove(key);
         }
-        Ok(Clustering { clusters })
+        Ok(Clustering {
+            clusters,
+            attention: 0,
+        })
     }
 
     pub fn parse_from_file<P>(bg: &Graph<Node>, path: P, reverse: bool) -> anyhow::Result<Self>
@@ -597,7 +601,7 @@ impl Clustering {
         &self,
         mut writer: W,
         graph: &Graph<Node>,
-        node_first_clustering: bool,
+        reverse_order: bool,
     ) -> anyhow::Result<()>
     where
         W: Write,
@@ -609,10 +613,10 @@ impl Clustering {
                 .chain(cluster.periphery_nodes.iter())
             {
                 let (cid, nid) = (cluster_id, graph.name_set.rev(*node_id).unwrap());
-                if node_first_clustering {
-                    writeln!(writer, "{} {}", nid, cid)?;
+                if reverse_order {
+                    writeln!(writer, "{}\t{}", cid, nid)?;
                 } else {
-                    writeln!(writer, "{} {}", cid, nid)?;
+                    writeln!(writer, "{}\t{}", nid, cid)?;
                 }
             }
         }
@@ -623,14 +627,14 @@ impl Clustering {
         &self,
         graph: &Graph<Node>,
         path: P,
-        node_first_clustering: bool,
+        legacy_order: bool,
     ) -> anyhow::Result<()>
     where
         P: AsRef<Path>,
     {
         let file = File::create(path)?;
         let writer = BufWriter::new(file);
-        self.write_raw(writer, graph, node_first_clustering)
+        self.write_raw(writer, graph, legacy_order)
     }
 
     pub fn retain<F>(&mut self, f: F)
@@ -646,6 +650,17 @@ impl Clustering {
             .map(|c| NotNan::new(graph.conductance_of(&c.all())).unwrap())
             .min()
             .map(|x| x.into_inner())
+    }
+}
+
+impl<'a> Clustering {
+    // par_it_mut of key value pairs of clusters with size >= attention
+    pub fn worthy_clusters(
+        &'a mut self,
+    ) -> impl ParallelIterator<Item = (&'a usize, &'a mut Cluster)> {
+        self.clusters
+            .par_iter_mut()
+            .filter(|(_, cluster)| cluster.core_nodes.len() >= self.attention)
     }
 }
 

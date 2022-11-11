@@ -60,9 +60,11 @@ enum SubCommand {
         /// Path to the clustering file
         #[clap(short, long)]
         clustering: PathBuf,
-        /// The cluster is in node_id<tab>cluster_id format as opposed to the other way
+        /// Attention, the minimum size for a cluster to be augmented
+        #[clap(short, long, default_value_t = 11)]
+        attention: usize,
         #[clap(long)]
-        node_first_clustering: bool,
+        legacy_cid_nid_order: bool,
         #[clap(short, long, parse(try_from_str = aoc::parse_aoc_config))]
         mode: AocConfig,
         #[clap(short, long, arg_enum, default_value_t = ExpandMode::Local)]
@@ -126,10 +128,10 @@ enum SubCommand {
         #[clap(short, long)]
         clusters: PathBuf,
         #[clap(long)]
-        node_first_clustering: bool,
+        legacy_cid_nid_order: bool,
         /// Keep tree-like clusters
         #[clap(long)]
-        keep_tree: bool,
+        no_trees: bool,
         #[clap(long)]
         size_lower_bound: Option<usize>,
         #[clap(long)]
@@ -167,11 +169,12 @@ fn main() -> anyhow::Result<()> {
         SubCommand::Augment {
             graph,
             clustering,
-            node_first_clustering,
+            legacy_cid_nid_order,
             mode,
             candidates,
             output,
             strategy,
+            attention,
         } => {
             let config = mode;
             info!("Augmenting clustering with config: {:?}", config);
@@ -184,7 +187,8 @@ fn main() -> anyhow::Result<()> {
             );
             let now = Instant::now();
             let mut clustering =
-                Clustering::parse_from_file(&graph, &clustering, node_first_clustering)?;
+                Clustering::parse_from_file(&graph, &clustering, legacy_cid_nid_order)?;
+            clustering.attention = attention;
             info!("Clustering loaded in {:?}", now.elapsed());
             info!(
                 "Clustering contains {} clusters with {} entries",
@@ -196,7 +200,7 @@ fn main() -> anyhow::Result<()> {
                     .sum::<usize>()
             );
             let now = Instant::now();
-            let candidates = candidates.unwrap_or(CandidateSpecifier::NonSingleton(2));
+            let candidates = candidates.unwrap_or(CandidateSpecifier::Everything());
             info!("Candidates specified as: {:?}", candidates);
             let mut candidates: SubsetVariant = match candidates {
                 CandidateSpecifier::NonSingleton(lb) => {
@@ -220,6 +224,13 @@ fn main() -> anyhow::Result<()> {
                 CandidateSpecifier::Everything() => {
                     SubsetVariant::Universe(UniverseSet::new_from_graph(&graph))
                 }
+                CandidateSpecifier::Degree(lb) => SubsetVariant::Owned(OwnedSubset::from_iter(
+                    graph
+                        .nodes
+                        .iter()
+                        .filter(|it| it.degree() >= lb)
+                        .map(|it| it.id),
+                )),
             };
             info!(
                 "Candidates ({} of them) loaded in {:?}",
@@ -250,7 +261,7 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             info!("Clusters augmented in {:?}", now.elapsed());
-            clustering.write_file(&graph, &output, node_first_clustering)?;
+            clustering.write_file(&graph, &output, legacy_cid_nid_order)?;
         }
         SubCommand::Pack { graph, mut output } => {
             if !output.ends_with(".bincode.lz4") {
@@ -311,15 +322,15 @@ fn main() -> anyhow::Result<()> {
         SubCommand::Filter {
             graph,
             clusters,
-            node_first_clustering,
-            keep_tree,
+            legacy_cid_nid_order,
+            no_trees,
             size_lower_bound,
             output,
             percentile_lower_bound,
         } => {
             let graph = Graph::parse_from_file(&graph)?;
             let mut clustering =
-                Clustering::parse_from_file(&graph, &clusters, node_first_clustering)?;
+                Clustering::parse_from_file(&graph, &clusters, legacy_cid_nid_order)?;
             info!(
                 "Clustering contains {} clusters with {} entries",
                 clustering.clusters.len(),
@@ -339,7 +350,7 @@ fn main() -> anyhow::Result<()> {
             });
             clustering.retain(|_cid, c| {
                 let core = c.core();
-                if !keep_tree && core.num_nodes() > graph.num_edges_inside(&core) {
+                if no_trees && core.num_nodes() > graph.num_edges_inside(&core) {
                     return false;
                 }
                 if let Some(lb) = size_lower_bound {
@@ -363,7 +374,7 @@ fn main() -> anyhow::Result<()> {
                     .map(|c| c.core_nodes.len())
                     .sum::<usize>()
             );
-            clustering.write_file(&graph, output, node_first_clustering)?;
+            clustering.write_file(&graph, output, legacy_cid_nid_order)?;
         }
     }
     info!("AOC finished in {:?}", starting.elapsed());
