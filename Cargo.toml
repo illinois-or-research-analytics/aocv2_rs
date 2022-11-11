@@ -30,6 +30,7 @@ stats-cli = "3.0.1"
 rand = {version = "0.8.5", features = ["small_rng"]}
 priority-queue = "1.2.3"
 shadow-rs = "0.11.0"
+serde_with = "2.0.1"
 
 [build-dependencies]
 shadow-rs = "0.11.0"

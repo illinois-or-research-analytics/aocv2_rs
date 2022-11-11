@@ -440,7 +440,6 @@ pub fn augment_clusters_local_expand<
     augmenting_config: &X,
 ) {
     let n_clusters = clustering.clusters.len() as u64;
-    // let viable_candidates: AHashSet<usize> = AHashSet::from_iter(candidate_ids.iter().cloned());
     clustering
         .clusters
         .par_iter_mut()

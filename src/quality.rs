@@ -2,6 +2,7 @@ use rayon::prelude::IntoParallelRefIterator;
 use rayon::prelude::ParallelIterator;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_with::serde_as;
 
 use crate::aoc::AocConfig;
 use crate::base::Graph;
@@ -91,5 +92,109 @@ impl ClusterInformation {
                 record
             })
             .collect()
+    }
+}
+
+#[serde_as]
+#[derive(Deserialize, Serialize)]
+pub struct DistributionSummary<const N: usize> {
+    #[serde_as(as = "Box<[_; N]>")]
+    pub values: Box<[f64; N]>,
+}
+
+impl<const N: usize> FromIterator<f64> for DistributionSummary<N> {
+    fn from_iter<T: IntoIterator<Item = f64>>(iter: T) -> Self {
+        let mut stats = inc_stats::Percentiles::new();
+        for v in iter {
+            stats.add(v);
+        }
+        let mut sample_points: Vec<f64> = vec![0.0];
+        let step = 1.0 / (N - 1) as f64;
+        for i in 0..(N - 2) {
+            sample_points.push((i + 1) as f64 * step);
+        }
+        sample_points.push(1.0);
+        let ans = match stats.percentiles(&sample_points) {
+            Err(_) | Ok(None) => vec![0.0; N],
+            Ok(Some(v)) => v,
+        };
+        let mut values = [0.0; N];
+        values.copy_from_slice(&ans);
+        Self {
+            values: Box::new(values),
+        }
+    }
+}
+
+impl<const N: usize> FromIterator<usize> for DistributionSummary<N> {
+    fn from_iter<T: IntoIterator<Item = usize>>(iter: T) -> Self {
+        iter.into_iter().map(|x| x as f64).collect()
+    }
+}
+
+#[serde_as]
+#[derive(Deserialize, Serialize)]
+pub struct GlobalStatistics<const N: usize> {
+    pub node_coverage: f64,
+    pub edge_coverage: f64,
+    pub modularity: f64,
+    pub num_clusters: usize,
+    pub cluster_size: DistributionSummary<N>,
+    pub cluster_mcd: DistributionSummary<N>,
+}
+
+impl<const N: usize> GlobalStatistics<N> {
+    pub fn from_clustering(g: &Graph<Node>, clus: &Clustering) -> Self {
+        let num_clusters = clus.clusters.len();
+        let node_coverage =
+            clus.clusters.values().map(|x| x.size()).sum::<usize>() as f64 / g.n() as f64;
+        let edge_coverage = clus
+            .clusters
+            .values()
+            .map(|x| g.num_edges_inside(&x.core()))
+            .sum::<usize>() as f64
+            / g.m() as f64;
+        let modularity = clus
+            .clusters
+            .values()
+            .map(|x| modularity(g, &x.core()))
+            .sum::<f64>();
+        let cluster_size = clus.clusters.iter().map(|(_, v)| v.size()).collect();
+        let cluster_mcd = clus
+            .clusters
+            .iter()
+            .map(|(_, v)| mcd(g, &v.core()))
+            .collect();
+        Self {
+            node_coverage,
+            edge_coverage,
+            modularity,
+            num_clusters,
+            cluster_size,
+            cluster_mcd,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DistributionSummary;
+    use std::iter::FromIterator;
+    #[test]
+    pub fn test_distribution_summary_three() {
+        let summary = DistributionSummary::<3>::from_iter(1..=100);
+        assert_eq!(1.0, summary.values[0]);
+        assert_eq!(50.5, summary.values[1]);
+        assert_eq!(100.0, summary.values[2]);
+    }
+
+    #[test]
+    pub fn test_distribution_summary_five() {
+        let summary = DistributionSummary::<5>::from_iter(1..=100);
+        assert_eq!(1.0, summary.values[0]);
+        assert_eq!(25.75, summary.values[1]);
+        assert_eq!(50.5, summary.values[2]);
+        assert_eq!(75.25, summary.values[3]);
+        assert_eq!(100.0, summary.values[4]);
     }
 }

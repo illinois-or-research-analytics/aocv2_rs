@@ -25,7 +25,7 @@ use crate::aoc::{
 };
 use crate::dump::dump_graph_to_json;
 use crate::misc::{NodeList, OwnedSubset, UniverseSet};
-use crate::quality::ClusterInformation;
+use crate::quality::{ClusterInformation, GlobalStatistics};
 
 shadow!(build);
 
@@ -102,6 +102,9 @@ enum SubCommand {
         /// Output path for the statistics
         #[clap(short, long)]
         output: PathBuf,
+        /// Global graph statistics
+        #[clap(long)]
+        global: Option<PathBuf>,
     },
 
     /// Dump basic information about the graph
@@ -267,7 +270,11 @@ fn main() -> anyhow::Result<()> {
             quality,
             single,
             output,
+            global,
         } => {
+            if single && global.is_some() {
+                warn!("Global stats are not computed for single clusters");
+            }
             let quality = quality.unwrap_or(AocConfig::Mcd());
             let graph = Graph::parse_from_file(&graph)?;
             info!(
@@ -283,6 +290,11 @@ fn main() -> anyhow::Result<()> {
             } else {
                 let clustering =
                     Clustering::parse_from_file(&graph, &clusters, node_first_clustering)?;
+                if let Some(global) = global {
+                    let global_stats = GlobalStatistics::<3>::from_clustering(&graph, &clustering);
+                    let json = serde_json::to_string_pretty(&global_stats)?;
+                    std::fs::write(global, json)?;
+                }
                 ClusterInformation::vec_from_clustering(&graph, &clustering, &quality)
             };
             let buf_writer = BufWriter::new(std::fs::File::create(output)?);
