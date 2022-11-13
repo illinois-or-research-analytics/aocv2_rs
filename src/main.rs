@@ -7,6 +7,8 @@ mod io;
 mod misc;
 mod quality;
 mod utils;
+use std::collections::BTreeMap;
+use std::fs::File;
 use std::io::{BufRead, BufWriter};
 use std::time::Instant;
 use std::{io::BufReader, path::PathBuf};
@@ -15,17 +17,17 @@ use aoc::AocConfig;
 pub use base::*;
 use clap::{ArgEnum, Parser, Subcommand};
 use inc_stats::Percentiles;
-use io::CandidateSpecifier;
+use io::{CandidateSpecifier, FilesSpecifier};
 use itertools::Itertools;
 use shadow_rs::shadow;
 use tracing::{info, warn};
 
-use crate::aoc::{
-    augment_clusters_from_cli_config, ExpandStrategy, LegacyExpandStrategy, LocalExpandStrategy,
-};
+use crate::aoc::{augment_clusters_from_cli_config, LegacyExpandStrategy, LocalExpandStrategy};
 use crate::dump::dump_graph_to_json;
 use crate::misc::{NodeList, OwnedSubset, UniverseSet};
-use crate::quality::{ClusterInformation, GlobalStatistics};
+use crate::quality::{
+    ensure_files_and_labels_exists, files_and_labels, ClusterInformation, GlobalStatistics,
+};
 
 shadow!(build);
 
@@ -69,7 +71,7 @@ enum SubCommand {
         mode: AocConfig,
         #[clap(short, long, arg_enum, default_value_t = ExpandMode::Local)]
         strategy: ExpandMode,
-        #[clap(long, parse(try_from_str = io::parse_specifier))]
+        #[clap(long, parse(try_from_str = io::parse_candidates_specifier))]
         candidates: Option<CandidateSpecifier>,
         #[clap(short, long)]
         output: PathBuf,
@@ -91,10 +93,10 @@ enum SubCommand {
         #[clap(short, long)]
         graph: PathBuf,
         /// Path to the clusters/cluster file
-        #[clap(short, long)]
-        clusters: PathBuf,
+        #[clap(short, long, parse(try_from_str = io::parse_files_specifier))]
+        clusters: FilesSpecifier,
         #[clap(long)]
-        node_first_clustering: bool,
+        legacy_cid_nid_order: bool,
         /// Quality metric to calculate
         #[clap(short, long, parse(try_from_str = aoc::parse_aoc_config))]
         quality: Option<AocConfig>,
@@ -203,7 +205,7 @@ fn main() -> anyhow::Result<()> {
             let now = Instant::now();
             let candidates = candidates.unwrap_or(CandidateSpecifier::Everything());
             info!("Candidates specified as: {:?}", candidates);
-            let mut candidates: SubsetVariant = match candidates {
+            let candidates: SubsetVariant = match candidates {
                 CandidateSpecifier::NonSingleton(lb) => {
                     SubsetVariant::Owned(OwnedSubset::from_iter(
                         clustering
@@ -217,9 +219,9 @@ fn main() -> anyhow::Result<()> {
                     ))
                 }
                 CandidateSpecifier::File(p) => SubsetVariant::Owned(OwnedSubset::from_iter(
-                    BufReader::new(std::fs::File::open(p)?)
+                    BufReader::new(File::open(p)?)
                         .lines()
-                        .map(|l| graph.retrieve(l.unwrap().trim()).unwrap())
+                        .map(|l| graph.retrieve(l.unwrap().parse().unwrap()).unwrap())
                         .collect_vec(),
                 )),
                 CandidateSpecifier::Everything() => {
@@ -278,7 +280,7 @@ fn main() -> anyhow::Result<()> {
         SubCommand::Stats {
             graph,
             clusters,
-            node_first_clustering,
+            legacy_cid_nid_order,
             quality,
             single,
             output,
@@ -287,6 +289,7 @@ fn main() -> anyhow::Result<()> {
             if single && global.is_some() {
                 warn!("Global stats are not computed for single clusters");
             }
+            info!(clusters = ?clusters, "Clusterings specified");
             let quality = quality.unwrap_or(AocConfig::Mcd());
             let graph = Graph::parse_from_file(&graph)?;
             info!(
@@ -295,23 +298,44 @@ fn main() -> anyhow::Result<()> {
                 "Graph loaded in {:?}",
                 now.elapsed()
             );
-            let entries = if single {
-                let subset = NodeList::from_raw_file(&graph, &clusters)?.into_owned_subset();
-                let ci = ClusterInformation::from_single_cluster(&graph, &subset, &quality);
-                vec![ci]
-            } else {
-                let clustering =
-                    Clustering::parse_from_file(&graph, &clusters, node_first_clustering)?;
-                if let Some(global) = global {
-                    let global_stats = GlobalStatistics::<3>::from_clustering(&graph, &clustering);
-                    let json = serde_json::to_string_pretty(&global_stats)?;
-                    std::fs::write(global, json)?;
+            let files_labels = files_and_labels(&clusters);
+            ensure_files_and_labels_exists(&files_labels)?;
+            let mut global_entries = BTreeMap::<String, GlobalStatistics<3>>::new();
+            let mut local_entries: Vec<ClusterInformation> = vec![];
+            for (filename, maybe_label) in &files_labels {
+                if single {
+                    let subset = NodeList::from_raw_file(&graph, &filename)?.into_owned_subset();
+                    let mut ci = ClusterInformation::from_single_cluster(&graph, &subset, &quality);
+                    ci.variant = maybe_label.map(|it| it.to_string());
+                    local_entries.push(ci);
+                } else {
+                    let clustering =
+                        Clustering::parse_from_file(&graph, &filename, legacy_cid_nid_order)?;
+                    let mut cluster_infos =
+                        ClusterInformation::vec_from_clustering(&graph, &clustering, &quality);
+                    for c in cluster_infos.iter_mut() {
+                        c.variant = maybe_label.map(|it| it.to_string());
+                    }
+                    local_entries.extend(cluster_infos);
                 }
-                ClusterInformation::vec_from_clustering(&graph, &clustering, &quality)
-            };
-            let buf_writer = BufWriter::new(std::fs::File::create(output)?);
+            }
+            if let Some(global) = global {
+                for (filename, maybe_label) in &files_labels {
+                    let label = maybe_label
+                        .map(|it| it.to_string())
+                        .unwrap_or("default".to_string());
+                    let clus =
+                        Clustering::parse_from_file(&graph, &filename, legacy_cid_nid_order)?;
+                    let global_stats = GlobalStatistics::<3>::from_clustering(&graph, &clus);
+                    global_entries.insert(label, global_stats);
+                }
+                let json = serde_json::to_string_pretty(&global_entries)?;
+                std::fs::write(global, json)?;
+            }
+
+            let buf_writer = BufWriter::new(File::create(output)?);
             let mut wtr = csv::Writer::from_writer(buf_writer);
-            for entry in entries {
+            for entry in local_entries {
                 wtr.serialize(entry)?;
             }
             wtr.flush()?;

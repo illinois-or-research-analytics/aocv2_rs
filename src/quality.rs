@@ -1,3 +1,6 @@
+use std::path::Path;
+
+use anyhow::bail;
 use rayon::prelude::IntoParallelRefIterator;
 use rayon::prelude::ParallelIterator;
 use serde::Deserialize;
@@ -6,6 +9,7 @@ use serde_with::serde_as;
 
 use crate::aoc::AocConfig;
 use crate::base::Graph;
+use crate::io::FilesSpecifier;
 use crate::utils::calc_cpm_resolution;
 use crate::utils::calc_modularity;
 use crate::AbstractSubset;
@@ -35,6 +39,7 @@ where
 
 #[derive(Serialize, Deserialize)]
 pub struct ClusterInformation {
+    pub variant: Option<String>,
     cid: Option<usize>,
     n: usize,
     m: usize,
@@ -68,6 +73,7 @@ impl ClusterInformation {
         let cpm = calc_cpm_resolution(ls, n, resolution);
         let conductance = g.conductance_of(c);
         Self {
+            variant: None,
             cid: None,
             n,
             m,
@@ -174,6 +180,27 @@ impl<const N: usize> GlobalStatistics<N> {
             cluster_mcd,
         }
     }
+}
+
+pub fn files_and_labels<'a>(spec: &'a FilesSpecifier) -> Vec<(String, Option<&'a str>)> {
+    match spec {
+        FilesSpecifier::SingleFile(f) => vec![(f.clone(), None)],
+        FilesSpecifier::FileFamily(f, l) => l
+            .iter()
+            .map(|x| (f.replace("{}", x), Some(x.as_str())))
+            .collect(),
+    }
+}
+
+pub fn ensure_files_and_labels_exists(
+    files_labels: &[(String, Option<&str>)],
+) -> anyhow::Result<()> {
+    for (f, _) in files_labels {
+        if !Path::new(f).exists() {
+            bail!("File {} does not exist", f);
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

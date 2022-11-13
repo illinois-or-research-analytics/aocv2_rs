@@ -1,4 +1,5 @@
-use bimap::BiMap;
+use ahash::AHashMap;
+
 use lz4::EncoderBuilder;
 use probabilistic_collections::bloom::BloomFilter;
 use serde::{Deserialize, Serialize};
@@ -8,16 +9,26 @@ use crate::{AbstractSubset, Graph, Node};
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NameSet {
     pub next_id: usize,
-    pub bimap: BiMap<String, usize>,
+    pub forward: AHashMap<usize, usize>,
+    pub rev: Vec<usize>,
 }
 
 impl NameSet {
-    pub fn retrieve(&self, name: &str) -> Option<usize> {
-        self.bimap.get_by_left(name).copied()
+    pub fn retrieve(&self, name: usize) -> Option<usize> {
+        self.forward.get(&name).copied()
     }
 
-    pub fn rev(&self, id: usize) -> Option<&str> {
-        self.bimap.get_by_right(&id).map(|it| it.as_str())
+    pub fn rev(&self, id: usize) -> Option<usize> {
+        self.rev.get(id).copied()
+    }
+
+    pub fn bi_insert(&mut self, name: usize, id: usize) {
+        self.forward.insert(name, id);
+        // make sure self.rev is long enough
+        if self.rev.len() <= id {
+            self.rev.resize(id + 1, 0);
+        }
+        self.rev[id] = name;
     }
 }
 

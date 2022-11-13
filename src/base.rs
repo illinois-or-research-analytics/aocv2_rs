@@ -174,24 +174,20 @@ impl<'a, NodeT> Graph<NodeT>
 where
     NodeT: Default + AbstractNode,
 {
-    pub fn request(&mut self, s: &str) -> usize {
-        return self
-            .name_set
-            .bimap
-            .get_by_left(s)
-            .copied()
-            .unwrap_or_else(|| {
-                let id = self.name_set.next_id;
-                self.name_set.next_id += 1;
-                self.name_set.bimap.insert(s.to_string(), id);
-                let mut node = NodeT::default();
-                node.assign_id(id);
-                self.nodes.push(node);
-                id
-            });
+    pub fn request(&mut self, s: usize) -> usize {
+        return self.name_set.forward.get(&s).copied().unwrap_or_else(|| {
+            let id = self.name_set.next_id;
+            self.name_set.next_id += 1;
+            self.name_set.forward.insert(s, id);
+            self.name_set.rev.push(s);
+            let mut node = NodeT::default();
+            node.assign_id(id);
+            self.nodes.push(node);
+            id
+        });
     }
 
-    pub fn retrieve(&self, s: &str) -> Option<usize> {
+    pub fn retrieve(&self, s: usize) -> Option<usize> {
         self.name_set.retrieve(s)
     }
 
@@ -210,7 +206,7 @@ where
         OwnedSubset::new(nodes)
     }
 
-    pub fn node_from_label(&'a self, label: &str) -> &'a NodeT {
+    pub fn node_from_label(&'a self, label: usize) -> &'a NodeT {
         let nid = self.retrieve(label).unwrap();
         &self.nodes[nid]
     }
@@ -235,7 +231,7 @@ impl Graph<Node> {
         }
         for (id, node) in graph.nodes.iter_mut().enumerate() {
             node.assign_id(id);
-            graph.name_set.bimap.insert(id.to_string(), id);
+            graph.name_set.bi_insert(id, id);
         }
         graph.name_set.next_id = graph.nodes.len();
         let permanent_nodes = graph
@@ -260,8 +256,8 @@ impl Graph<Node> {
                 .next()
                 .ok_or_else(|| anyhow::anyhow!("missing from"))?;
             let to = parts.next().ok_or_else(|| anyhow::anyhow!("missing to"))?;
-            let from_id = graph.request(from);
-            let to_id = graph.request(to);
+            let from_id = graph.request(from.parse()?);
+            let to_id = graph.request(to.parse()?);
             graph.nodes[from_id].add_out_edge(to_id);
             graph.nodes[to_id].add_in_edge(from_id);
         }
@@ -388,21 +384,6 @@ impl Graph<Node> {
         let ls = self.num_edges_inside(view);
         utils::calc_cpm_resolution(ls, view.num_nodes(), resolution)
     }
-
-    // pub fn frontier_of<'a, X>(&'a self, view: &'a X) -> impl Iterator<Item = &'a Node>
-    // where
-    //     X: AbstractSubset<'a> {
-    //     let mut seen = AHashSet::new();
-    //     view.each_node_id()
-    //         .map(move |it| &self.nodes[*it])
-    //         .flat_map(|it| it.edges.iter())
-    //         .filter(move |it| {
-    //             let ret = !seen.contains(it) &&! view.contains(*it);
-    //             seen.insert(*it);
-    //             ret
-    //         })
-    //         .map(move |it| &self.nodes[*it])
-    // }
 }
 
 /// A "cluster" not in the mathematical sense but actually two sets
@@ -559,7 +540,7 @@ impl Clustering {
             let cluster_id = cluster_name
                 .parse::<usize>()
                 .map_err(|_| anyhow::anyhow!("invalid cluster_id"))?;
-            let node_id = bg.retrieve(node_name);
+            let node_id = bg.retrieve(node_name.parse()?);
             match node_id {
                 Some(node_id) => {
                     clusters.entry(cluster_id).or_default().add_core(node_id);
@@ -568,7 +549,7 @@ impl Clustering {
                     if !not_found_nodes.contains(&cluster_id) {
                         not_found_nodes.insert(cluster_id);
                     } else {
-                        bail!("node {} stipulated in cluster {} not found in graph, and is not singleton", node_name, cluster_id);
+                        bail!("node {} requested in cluster {} not found in graph, and is not singleton", node_name, cluster_id);
                     }
                 }
             }
@@ -721,5 +702,23 @@ mod tests {
         let str_g = DefaultGraph::parse_edgelist_from_str("0 1\n1 2\n2 3\n 3 4").unwrap();
         let usize_g: DefaultGraph = vec![(0, 1), (1, 2), (2, 3), (3, 4)].into_iter().collect();
         assert_eq!(str_g, usize_g);
+    }
+
+    #[test]
+    pub fn graph_from_iter() {
+        let g: DefaultGraph = vec![
+            (99999, 99999),
+            (3, 4),
+            (1, 2),
+            (2, 3),
+            (1033, 104),
+            (104, 3),
+        ]
+        .into_iter()
+        .collect();
+        for (internal_id, &external_id) in g.name_set.rev.iter().enumerate() {
+            assert_eq!(g.name_set.retrieve(external_id).unwrap(), internal_id);
+            assert_eq!(g.name_set.rev(internal_id).unwrap(), external_id);
+        }
     }
 }

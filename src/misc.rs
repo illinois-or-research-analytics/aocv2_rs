@@ -93,7 +93,7 @@ impl NodeList {
         let mut node_ids = Vec::new();
         for l in reader.lines() {
             let l = l?;
-            let node_id = g.retrieve(l.trim()).unwrap();
+            let node_id = g.retrieve(l.trim().parse()?).unwrap();
             node_ids.push(node_id);
         }
         Ok(Self { node_ids })

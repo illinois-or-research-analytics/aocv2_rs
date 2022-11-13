@@ -2,7 +2,7 @@ use crate::misc::OnlineConductance;
 use crate::utils::{choose2, NeighborhoodFilter};
 use crate::{io::*, AbstractSubset};
 use crate::{utils, Cluster, Clustering, Graph, Node};
-use ahash::{AHashMap, AHashSet};
+use ahash::AHashMap;
 use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use nom::{branch::alt, sequence::tuple, Parser};
@@ -464,7 +464,7 @@ pub fn augment_clusters_local_expand<
             });
             // let mut considered: AHashSet<usize> = AHashSet::new();
             let mut graveyard: AHashMap<usize, usize> = AHashMap::new();
-            let mut stopping_criterion = 0usize;
+            let stopping_criterion = 0usize;
             while let Some((n, Reverse((m, _)))) = pq.pop() {
                 let cand = &bg.nodes[n];
                 if m <= stopping_criterion {
@@ -535,7 +535,7 @@ pub trait ExpandStrategy {
         clustering: &mut Clustering,
         candidate_ids: &'a S,
         augmenting_config: &X,
-    ) -> ();
+    );
 }
 
 pub struct LegacyExpandStrategy {}
@@ -547,7 +547,7 @@ impl ExpandStrategy for LegacyExpandStrategy {
         clustering: &mut Clustering,
         candidate_ids: &'a S,
         augmenting_config: &X,
-    ) -> () {
+    ) {
         augment_clusters(bg, clustering, candidate_ids, augmenting_config);
     }
 }
@@ -558,7 +558,7 @@ impl ExpandStrategy for LocalExpandStrategy {
         clustering: &mut Clustering,
         candidate_ids: &'a S,
         augmenting_config: &X,
-    ) -> () {
+    ) {
         augment_clusters_local_expand(bg, clustering, candidate_ids, augmenting_config);
     }
 }
@@ -576,14 +576,14 @@ mod tests {
             threshold: Some(0.5),
         };
         let g = Graph::parse_edgelist_from_str("0 1\n1 2\n2 3\n 3 4")?;
-        let mut c = Cluster::from_iter(vec![g.retrieve("3").unwrap(), g.retrieve("4").unwrap()]);
+        let mut c = Cluster::from_iter(vec![3, 4]);
         let mut augmenter = augment_config.augmenter(&g, &c);
         assert_eq!(2, c.size());
-        assert!(augmenter.query_and_admit(&g, &mut c, g.node_from_label("2")));
+        assert!(augmenter.query_and_admit(&g, &mut c, g.node_from_label(2)));
         assert_eq!(3, c.size());
-        assert!(augmenter.query_and_admit(&g, &mut c, g.node_from_label("1")));
+        assert!(augmenter.query_and_admit(&g, &mut c, g.node_from_label(1)));
         assert_eq!(4, c.size());
-        assert!(!augmenter.query_and_admit(&g, &mut c, g.node_from_label("0")));
+        assert!(!augmenter.query_and_admit(&g, &mut c, g.node_from_label(0)));
         assert_eq!(4, c.size());
         Ok(())
     }
@@ -595,21 +595,21 @@ mod tests {
         let g: DefaultGraph = vec![(0, 1), (1, 2), (2, 0), (3, 4), (5, 6)]
             .into_iter()
             .collect();
-        let mut c = Cluster::from_iter(vec![g.retrieve("0").unwrap(), g.retrieve("1").unwrap()]);
+        let mut c = Cluster::from_iter(vec![0, 1]);
         let mut augmenter = augment_config.augmenter(&g, &c);
         assert_eq!(1, augmenter.ls);
         assert_eq!(g.cpm_of(&c.core(), r), augmenter.original_cpm);
         assert_eq!(g.cpm_of(&c.all(), r), augmenter.cpm());
         assert_eq!(0.5, augmenter.cpm());
         assert_eq!(2, c.size());
-        assert!(augmenter.query_and_admit(&g, &mut c, g.node_from_label("2")));
+        assert!(augmenter.query_and_admit(&g, &mut c, g.node_from_label(2)));
         assert_eq!(
             c.periphery_nodes.iter().copied().collect::<Vec<usize>>(),
-            vec![g.node_from_label("2").id]
+            vec![2]
         );
         assert_eq!(g.cpm_of(&c.all(), r), augmenter.cpm());
         assert_eq!(3, c.size());
-        assert!(!augmenter.query_and_admit(&g, &mut c, g.node_from_label("3")));
+        assert!(!augmenter.query_and_admit(&g, &mut c, g.node_from_label(3)));
         assert_eq!(3, c.size());
         assert_eq!(g.cpm_of(&c.all(), r), augmenter.cpm());
         Ok(())
