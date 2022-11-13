@@ -1,7 +1,13 @@
 AOCluster
 ===================
 
-Generic overlapping cluster using greedy augmentation. In other words, **a**ssembling **o**verlapping **c**lusters using an existing clustering.
+Generic overlapping cluster using greedy augmentation. Given a clustering of a network, this method enlarges the clusters by allowing nodes from the network to be added to the clusters. AOC performs this augmentation based on a user-selected cluster criterion score, such as modularity[^1], the Constant Potts Model[^2] (CPM) score, or the minimum intra-cluster degree[^3]. When considering whether a node can be added to a cluster, the addition is permitted only if the criterion score of the enlarged cluster does not drop below the criterion score of the original cluster.
+
+[^1]: Newman, Mark EJ, and Michelle Girvan. "Finding and evaluating community structure in networks." *Physical review E* 69.2 (2004): 026113.
+
+[^2]: Traag, Vincent A., Paul Van Dooren, and Yurii Nesterov. "Narrow scope for resolution-limit-free community detection." *Physical Review E* 84.1 (2011): 016114.
+
+[^3]: Wedell, Eleanor, et al. "Center–periphery structure in research communities." *Quantitative Science Studies* 3.1 (2022): 289-314.
 
 ## Getting Started
 
@@ -15,7 +21,7 @@ Prepare an edgelist (undirected) graph consisting entirely of integers, such as 
 0 1
 1 10
 10 1 # duplicate edges / parallel edges will be ignored for robustness
-# any whitespace separating nodes can work: tabs, spaces, etc.
+# any non-newline whitespace separating node pairs can work
 ```
 
 and a corresponding vertex membership file
@@ -41,34 +47,41 @@ See below for more options.
 
 `aocluster augment` is the main sub-command.
 
-Boldfaced parameters are required. Notation such as `{k:int}` denote a parameter that should be an integer, e.g., `k10` matches `k{k:int}`.
+Boldfaced parameters are required. 🌟 suggests an important algorithmic parameter -- the rest we tried to leave with reasonable defaults. Notation such as `{k:int}` denote a parameter that should be an integer, e.g., `k10` matches `k{k:int}`.
 
 | Param | Description |
 | --- | --- |
-| **`-g {graphpath:string}`** | Path to the graph in edgelist/[packed](#graph-packing) format |
-| **`-c {clusteringpath:string}`** | Path to the clustering, default in `node_id cid` format |
-| **`-m {mode:enum(mode)}`** | Quality used for augmentation. See [here](#quality-measures). |
-| **`-o {outputpath:string}`** | Path to the output clustering, same format as the input clustering |
-| `--attention {a:int}` | Defaults to `11`. Clusters below this size will not be augmented. |
-| `--candidates {c:candidate_spec}` | Defaults to `all`. See [here](#specifying-candidates). |
-| `-s {strategy:enum(strategy)}` | What strategy to maximize the clusters. Defaults to `local`. See [here](#expansion-strategy). |
-| `[--legacy-cid-nid-order]` | Is the input clustering in `cid nid` format (AOC legacy)? |
+| **`-g {graphpath:string}`** 🌟 | Path to the background graph in edgelist/[packed](#graph-packing) format |
+| **`-c {clusteringpath:string}`** 🌟 | Path to the clustering, default in `node_id cluster_id` format |
+| **`-m {mode:enum(mode)}`** 🌟 | Augmenting criterion used for augmentation. See [here](#augmenting-criterion). |
+| **`-o {outputpath:string}`** 🌟 | Path to the output clustering, will be in same format as the input clustering |
+| `--augmentable-lb {a:int}` 🌟 | Defaults to `0`. Clusters below this size will not be augmented. Shorthand `-a {a:int}`. |
+| `--candidates {c:candidate_spec}` | Specifies which nodes are eligible to be augmented to clusters. Defaults to `all`. See [here](#specifying-candidates). |
+| `-s {strategy:enum(strategy)}` | What greedy heuristic to use to maximize the clusters. Defaults to `local`. See [here](#expansion-strategy). |
+| `[--legacy-cid-nid-order]` | Is the input clustering in `cluster_id node_id` format (AOC legacy)? |
 
-## Quality Measures
+## Augmenting Criterion
 
-Recall that $n = |V|$ and $m = |E|$.
+Recall that $n = |V|$ and $m = |E|$ for a graph $G = (V, E)$. The current version of AOC is motivated by augmenting a cluster while not hurting its original "quality". Each of the following quality measures can be specified as an augmenting criterion, with a query $u$ added to $K_i$ if the augmented cluster has no worse quality than the input version of the cluster.
 
-| Specifier | Description |
+| Quality | Description |
 | --- | --- |
 | `cpm{r:double}` | CPM with resolution value $r$ |
-| `mod{r:double}` | modularity with resolution value $r$ |
+| `mod{r:double}` | modularity with resolution value $r$. Use $r = 1$ for "vanilla" modularity. |
 | `density` | $m / \binom{n}{2}$ |
-| `k{k:int}` | minimum intra-cluster degree must $\geq k$ |
-| `mcd` (or `m`) | minimum intra-cluster degree |
 | `mean-degree` | average degree inside the cluster |
 | `conductance` | conductance of the cut induced by the cluster |
 
-Examples include `cpm0.1` and `k100`. This parameter must be specified (no default value).
+Minor note: `cpm{r:double}` is the obvious choice for CPM-based clustering, but `density` also makes sense, since CPM-based clustering guarantees that each cluster has density $\geq r$.
+
+### Legacy Criteria
+
+Legacy criteria are kept to preserve features from the previous version of AOC. Notably, the following two legacy criteria also consider the connectivity to the original not-augmented cluster. That is, let $O_i$ denote the original (unmodified) version of cluster $K_i$ (which might have already been augmented) -- the number of edges of a candidate node $u$ connected to $O_i$ will be considered. Also, the two criteria below also only augments $u$ to $K_i$ if $K_i \cup \{u\}$ has positive modularity. See the [original paper](#citations) for more information.
+
+| Specifier | Description |
+| --- | --- |
+| `k{k:int}` | corresponds to `AOC_k` with $k$ |
+| `mcd` (shorthand `m`) | corresponds to `AOC_m` |
 
 ## Specifying Candidates
 
@@ -92,15 +105,15 @@ By default, the candidate specifier is `all`.
 
 ### Scenario 1: augmenting a Leiden-based clustering
 
-Given the following configuration:
+Say that you have the following existing clustering that you want to augment into overlapping clusters
 
- - $\gamma = 0.1$ for the resolution parameter
- - Existing graph located at `graph.txt`
- - Leiden clustering (tab-delimited node id cluster id file) at `clustering.txt`
- - The quality is specified as `cpm0.1` fitting the $\gamma$ above
- - Candidates are all the nodes (`all`)
- - Output file intended to be at `output.txt` (same format as input)
- - Attention is set to `0`
+ - The background network is at `graph.txt`, in the edgelist/packed format
+ - Leiden output (tab-delimited node id cluster id file) is at `clustering.txt`. The Leiden clustering was done specifying resolution $r = 0.1$ with CPM as the optimization criterion
+
+What is left to be specified includes:
+ - the output path (say you want it to be at `output.txt`)
+ - the augmenting criterion. You want to choose either `density` or `cpm0.1`. Note that it is important to reuse the same $r$ value for `cpm{r:resolution}` here (i.e., $r = 0.1$)
+ - `augmenting-lb`, in this case `0` seems like a reasonable value
 
 The following command can be run:
 
@@ -115,12 +128,10 @@ Given the following configuration:
  - IKC was run with $k = 10$
  - Existing graph located at `graph.txt`
  - IKC clustering (**converted** to the legacy-AOC expected cluster id node id format) located at `clustering.txt`
- - The quality is specified as `k10` (fitting the $k$, or just `mcd`)
- - Candidates are all the non-singleton nodes in clusters $\geq 10$
+ - You aim to run AOC_k, so you specify the augmenting criterion as `k10` (also important to set this $k$ exactly the same as the above $k$, or in the case of AOC_m, specify this as `mcd`)
  - Use the `candidates.txt` file for the candidates
- - Use the `legacy` expansion strategy
  - Output file intended to be at `output.txt` (same format as input)
- - Attention is set to `0` (equivalent to default `-a 11`)
+ - `augmentable-lb` is 0 (the default)
 
 ```bash
 aocluster augment -g graph.txt -c clustering.txt -q k10 --candidates candidates.txt --legacy-cid-nid-order --strategy legacy -o output.txt -a 0
@@ -128,7 +139,7 @@ aocluster augment -g graph.txt -c clustering.txt -q k10 --candidates candidates.
 
 ## Other Features
 
-### External Documentation
+### Command Documentation
 
 Commands are somewhat self documenting. For example,
 try `aocluster augment --help`. Or any command suffixed with `--help`.
@@ -191,3 +202,7 @@ cargo install --path .
 See also the paper for the previous version of AOC:
 
 > Jakatdar, A., Liu, B., Warnow, T., & Chacko, G. (2022). AOC; Assembling Overlapping Communities. arXiv preprint arXiv:2208.04842.
+
+## Credits
+
+This README is written by both Baqiao Liu and Tandy Warnow.

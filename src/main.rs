@@ -61,8 +61,8 @@ enum SubCommand {
         #[clap(short, long)]
         clustering: PathBuf,
         /// Attention, the minimum size for a cluster to be augmented
-        #[clap(short, long, default_value_t = 11)]
-        attention: usize,
+        #[clap(short, long, default_value_t = 0)]
+        augmentable_lb: usize,
         #[clap(long)]
         legacy_cid_nid_order: bool,
         #[clap(short, long, parse(try_from_str = aoc::parse_aoc_config))]
@@ -154,7 +154,7 @@ fn main() -> anyhow::Result<()> {
     // initialize logging
     tracing_subscriber::fmt::init();
     let args = Args::parse();
-    let mut num_cpu = num_cpus::get_physical().min(32); // TODO: specify number of cores
+    let mut num_cpu = num_cpus::get_physical().min(32);
     if let Some(specified_cores) = args.threads {
         if specified_cores > num_cpus::get_physical() {
             warn!("Specified more cores than available, using all available cores");
@@ -165,6 +165,7 @@ fn main() -> anyhow::Result<()> {
     rayon::ThreadPoolBuilder::new()
         .num_threads(num_cpu)
         .build_global()?;
+    info!(n_threads = num_cpu, "Thread-pool initialized");
     match args.cmd {
         SubCommand::Augment {
             graph,
@@ -174,7 +175,7 @@ fn main() -> anyhow::Result<()> {
             candidates,
             output,
             strategy,
-            attention,
+            augmentable_lb: attention,
         } => {
             let config = mode;
             info!("Augmenting clustering with config: {:?}", config);
