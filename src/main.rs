@@ -301,13 +301,13 @@ fn main() -> anyhow::Result<()> {
             let files_labels = files_and_labels(&clusters);
             ensure_files_and_labels_exists(&files_labels)?;
             let mut global_entries = BTreeMap::<String, GlobalStatistics<3>>::new();
-            let mut local_entries: BTreeMap<String, Vec<ClusterInformation>> = BTreeMap::new();
+            let mut local_entries: BTreeMap<&String, Vec<ClusterInformation>> = BTreeMap::new();
             for (filename, maybe_label) in &files_labels {
                 if single {
                     let subset = NodeList::from_raw_file(&graph, &filename)?.into_owned_subset();
                     let mut ci = ClusterInformation::from_single_cluster(&graph, &subset, &quality);
                     ci.variant = maybe_label.map(|it| it.to_string());
-                    local_entries.entry(filename.clone()).or_default().push(ci);
+                    local_entries.entry(filename).or_default().push(ci);
                 } else {
                     let clustering =
                         Clustering::parse_from_file(&graph, &filename, legacy_cid_nid_order)?;
@@ -316,7 +316,7 @@ fn main() -> anyhow::Result<()> {
                     for c in cluster_infos.iter_mut() {
                         c.variant = maybe_label.map(|it| it.to_string());
                     }
-                    local_entries.entry(filename.clone()).or_default().extend(cluster_infos);
+                    local_entries.entry(filename).or_default().extend(cluster_infos);
                 }
             }
             if let Some(global) = global {
