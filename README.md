@@ -125,8 +125,8 @@ aocluster augment -g graph.txt -c clustering.txt -m cpm0.1 --candidates all -o o
 
 Given the following configuration:
 
- - IKC was run with $k = 10$
- - Existing graph located at `graph.txt`
+ - IKC[^3] was run with $k = 10$
+ - Background graph located at `graph.txt`
  - IKC clustering (**converted** to the legacy-AOC expected cluster id node id format) located at `clustering.txt`
  - You aim to run AOC_k, so you specify the augmenting criterion as `k10` (also important to set this $k$ exactly the same as the above $k$, or in the case of AOC_m, specify this as `mcd`)
  - Use the `candidates.txt` file for the candidates
