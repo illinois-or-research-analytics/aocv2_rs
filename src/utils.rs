@@ -93,7 +93,7 @@ impl NeighborhoodFilter {
         let mut filter = BloomFilter::<usize>::new(size, 0.01);
         for node_id in view.each_node_id() {
             let node = &bg.nodes[*node_id];
-            for neighbor_id in &node.out_edges {
+            for neighbor_id in &node.edges {
                 filter.insert(neighbor_id);
             }
         }
@@ -102,7 +102,7 @@ impl NeighborhoodFilter {
 
     pub fn add_neighbors_of(&mut self, bg: &Graph<Node>, node_id: usize) {
         let node = &bg.nodes[node_id];
-        for neighbor_id in &node.out_edges {
+        for neighbor_id in &node.edges {
             self.filter.insert(neighbor_id);
         }
     }

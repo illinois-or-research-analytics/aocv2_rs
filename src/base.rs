@@ -46,20 +46,20 @@ pub trait AbstractSubset<'a> {
 #[derive(Default, Debug, Clone)]
 pub struct TransientNode {
     id: usize,
-    in_edges: BTreeSet<usize>,
-    out_edges: BTreeSet<usize>,
+    // in_edges: BTreeSet<usize>,
+    // out_edges: BTreeSet<usize>,
     edges: BTreeSet<usize>,
 }
 
 impl AbstractNode for TransientNode {
     fn add_out_edge(&mut self, target: usize) {
         self.edges.insert(target);
-        self.out_edges.insert(target);
+        // self.out_edges.insert(target);
     }
 
     fn add_in_edge(&mut self, from: usize) {
         self.edges.insert(from);
-        self.in_edges.insert(from);
+        // self.in_edges.insert(from);
     }
 
     fn assign_id(&mut self, id: usize) {
@@ -72,8 +72,8 @@ impl AbstractNode for TransientNode {
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Node {
     pub id: usize,
-    pub in_edges: Vec<usize>,
-    pub out_edges: Vec<usize>,
+    // pub in_edges: Vec<usize>,
+    // pub out_edges: Vec<usize>,
     pub edges: Vec<usize>,
 }
 
@@ -118,11 +118,11 @@ impl Node {
     }
 
     pub fn indegree(&self) -> usize {
-        self.in_edges.len()
+        self.degree()
     }
 
     pub fn outdegree(&self) -> usize {
-        self.out_edges.len()
+        self.degree()
     }
 
     pub fn total_degree(&self) -> usize {
@@ -133,12 +133,12 @@ impl Node {
 impl AbstractNode for Node {
     fn add_out_edge(&mut self, target: usize) {
         self.edges.push(target);
-        self.out_edges.push(target);
+        // self.out_edges.push(target);
     }
 
     fn add_in_edge(&mut self, from: usize) {
         self.edges.push(from);
-        self.in_edges.push(from);
+        // self.in_edges.push(from);
     }
 
     fn assign_id(&mut self, id: usize) {
@@ -151,8 +151,8 @@ impl TransientNode {
     pub fn into_permanent(self) -> Node {
         Node {
             id: self.id,
-            in_edges: self.in_edges.into_iter().collect_vec(),
-            out_edges: self.out_edges.into_iter().collect_vec(),
+            // in_edges: self.in_edges.into_iter().collect_vec(),
+            // out_edges: self.out_edges.into_iter().collect_vec(),
             edges: self.edges.into_iter().collect_vec(),
         }
     }

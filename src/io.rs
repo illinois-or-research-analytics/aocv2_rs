@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use nom::{
     branch::alt,
     bytes::complete::tag_no_case,
@@ -45,20 +43,20 @@ pub fn parse_candidates_specifier(s: &str) -> Result<CandidateSpecifier, String>
     Ok(spec)
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum FilesSpecifier {
     SingleFile(String),
     FileFamily(String, Vec<String>),
 }
 
 pub fn parse_files_specifier(s: &str) -> Result<FilesSpecifier, String> {
-    match s.split_once(":") {
+    match s.split_once(':') {
         Some((filename, indices)) => {
             if !filename.contains("{}") {
                 return Err("File family specifier must contain a '{}'".to_string());
             }
             let indices = indices
-                .split(",")
+                .split(',')
                 .map(|i| {
                     i.parse()
                         .map_err(|e| format!("Failed to parse index: {}", e))
@@ -81,9 +79,9 @@ mod tests {
             Ok(FilesSpecifier::SingleFile("foo.txt".to_string()))
         );
         assert_eq!(
-            parse_files_specifier("foo.txt:1,2,3"),
+            parse_files_specifier("foo{}.txt:1,2,3"),
             Ok(FilesSpecifier::FileFamily(
-                "foo.txt".to_string(),
+                "foo{}.txt".to_string(),
                 vec!["1".to_string(), "2".to_string(), "3".to_string()]
             ))
         );
