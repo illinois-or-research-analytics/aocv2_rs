@@ -8,7 +8,7 @@ use crate::{Graph, Node};
 pub struct GraphDump {
     pub n: usize,
     pub m: usize,
-    pub degrees: BTreeMap<String, usize>,
+    pub degrees: BTreeMap<usize, usize>,
 }
 
 pub fn dump_graph(graph: &Graph<Node>) -> GraphDump {
@@ -16,7 +16,7 @@ pub fn dump_graph(graph: &Graph<Node>) -> GraphDump {
     for node in graph.nodes.iter() {
         let degree = node.degree();
         let name = graph.name_set.rev(node.id).unwrap();
-        degrees.insert(name.to_string(), degree);
+        degrees.insert(name, degree);
     }
     GraphDump {
         n: graph.n(),

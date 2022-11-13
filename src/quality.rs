@@ -2,6 +2,7 @@ use std::path::Path;
 
 use anyhow::bail;
 use rayon::prelude::IntoParallelRefIterator;
+use rayon::prelude::ParallelBridge;
 use rayon::prelude::ParallelIterator;
 use serde::Deserialize;
 use serde::Serialize;
@@ -157,20 +158,49 @@ impl<const N: usize> GlobalStatistics<N> {
         let edge_coverage = clus
             .clusters
             .values()
+            .par_bridge()
             .map(|x| g.num_edges_inside(&x.core()))
             .sum::<usize>() as f64
             / g.m() as f64;
         let modularity = clus
             .clusters
             .values()
+            .par_bridge()
             .map(|x| modularity(g, &x.core()))
             .sum::<f64>();
         let cluster_size = clus.clusters.iter().map(|(_, v)| v.size()).collect();
-        let cluster_mcd = clus
+        let cluster_mcd_buf: Vec<_> = clus
             .clusters
-            .iter()
+            .par_iter()
             .map(|(_, v)| mcd(g, &v.core()))
             .collect();
+        let cluster_mcd = cluster_mcd_buf.into_iter().collect();
+        Self {
+            node_coverage,
+            edge_coverage,
+            modularity,
+            num_clusters,
+            cluster_size,
+            cluster_mcd,
+        }
+    }
+
+    pub fn from_clustering_with_local(
+        g: &Graph<Node>,
+        clus: &Clustering,
+        local_info: &[ClusterInformation],
+    ) -> Self {
+        let num_clusters = clus.clusters.len();
+        let node_coverage = local_info.iter().map(|it| it.n).sum::<usize>() as f64 / g.n() as f64;
+        let edge_coverage = local_info.iter().map(|it| it.m).sum::<usize>() as f64 / g.m() as f64;
+        let modularity = clus
+            .clusters
+            .values()
+            .par_bridge()
+            .map(|x| modularity(g, &x.core()))
+            .sum::<f64>();
+        let cluster_size = clus.clusters.iter().map(|(_, v)| v.size()).collect();
+        let cluster_mcd = local_info.iter().map(|it| it.mcd).collect();
         Self {
             node_coverage,
             edge_coverage,

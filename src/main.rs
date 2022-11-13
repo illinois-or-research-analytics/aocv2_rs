@@ -326,7 +326,7 @@ fn main() -> anyhow::Result<()> {
                         .unwrap_or("default".to_string());
                     let clus =
                         Clustering::parse_from_file(&graph, &filename, legacy_cid_nid_order)?;
-                    let global_stats = GlobalStatistics::<3>::from_clustering(&graph, &clus);
+                    let global_stats = GlobalStatistics::<3>::from_clustering_with_local(&graph, &clus, &local_entries);
                     global_entries.insert(label, global_stats);
                 }
                 let json = serde_json::to_string_pretty(&global_entries)?;
