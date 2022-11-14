@@ -1,6 +1,6 @@
 use crate::misc::OnlineConductance;
 use crate::utils::{choose2, NeighborhoodFilter};
-use crate::{io::*, AbstractSubset};
+use crate::{io::*, AbstractSubset, DefaultGraph};
 use crate::{utils, Cluster, Clustering, Graph, Node};
 use ahash::AHashMap;
 use indicatif::ParallelProgressIterator;
@@ -13,7 +13,7 @@ use tracing::debug;
 
 pub trait AugmentingConfig: Sized {
     type Augmenter: Augmenter<Self>;
-    fn augmenter(&self, bg: &Graph<Node>, c: &Cluster) -> Self::Augmenter;
+    fn augmenter(&self, bg: &DefaultGraph, c: &Cluster) -> Self::Augmenter;
 }
 
 #[derive(Clone)]
@@ -24,7 +24,7 @@ struct AugmentByMcd {
 impl AugmentingConfig for AugmentByMcd {
     type Augmenter = McdKAugmenter;
 
-    fn augmenter(&self, bg: &Graph<Node>, c: &Cluster) -> Self::Augmenter {
+    fn augmenter(&self, bg: &DefaultGraph, c: &Cluster) -> Self::Augmenter {
         McdKAugmenter::new(c.mcd(bg).unwrap_or_default(), bg, c)
     }
 }
@@ -37,7 +37,7 @@ struct AugmentByK {
 impl AugmentingConfig for AugmentByK {
     type Augmenter = McdKAugmenter;
 
-    fn augmenter(&self, bg: &Graph<Node>, c: &Cluster) -> Self::Augmenter {
+    fn augmenter(&self, bg: &DefaultGraph, c: &Cluster) -> Self::Augmenter {
         McdKAugmenter::new(self.k, bg, c)
     }
 }
@@ -55,7 +55,7 @@ struct AugmentByCpm {
 impl AugmentingConfig for AugmentByCpm {
     type Augmenter = CpmAugmenter;
 
-    fn augmenter(&self, bg: &Graph<Node>, c: &Cluster) -> Self::Augmenter {
+    fn augmenter(&self, bg: &DefaultGraph, c: &Cluster) -> Self::Augmenter {
         let ls = bg.num_edges_inside(&c.core());
         let total_nodes = c.size();
         let cpm = utils::calc_cpm_resolution(ls, total_nodes, self.resolution);
@@ -71,7 +71,7 @@ impl AugmentingConfig for AugmentByCpm {
 impl AugmentingConfig for AugmentByMod {
     type Augmenter = ModularityAugmenter;
 
-    fn augmenter(&self, bg: &Graph<Node>, c: &Cluster) -> Self::Augmenter {
+    fn augmenter(&self, bg: &DefaultGraph, c: &Cluster) -> Self::Augmenter {
         let total_l = bg.m();
         let ls = bg.num_edges_inside(&c.core());
         let ds = c
@@ -98,7 +98,7 @@ struct AugmentByDensityThreshold {
 impl AugmentingConfig for AugmentByDensityThreshold {
     type Augmenter = DensityThresholdAugmenter;
 
-    fn augmenter(&self, bg: &Graph<Node>, c: &Cluster) -> Self::Augmenter {
+    fn augmenter(&self, bg: &DefaultGraph, c: &Cluster) -> Self::Augmenter {
         let (n, m) = bg.count_n_m(&c.core());
         DensityThresholdAugmenter {
             threshold: self
@@ -110,11 +110,11 @@ impl AugmentingConfig for AugmentByDensityThreshold {
 }
 
 pub trait Augmenter<T: AugmentingConfig> {
-    fn construct(t: &T, bg: &Graph<Node>, c: &Cluster) -> T::Augmenter {
+    fn construct(t: &T, bg: &DefaultGraph, c: &Cluster) -> T::Augmenter {
         t.augmenter(bg, c)
     }
-    fn query(&mut self, bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool;
-    fn query_and_admit(&mut self, bg: &Graph<Node>, c: &mut Cluster, node: &Node) -> bool {
+    fn query(&mut self, bg: &DefaultGraph, c: &Cluster, node: &Node) -> bool;
+    fn query_and_admit(&mut self, bg: &DefaultGraph, c: &mut Cluster, node: &Node) -> bool {
         let ans = self.query(bg, c, node);
         if ans {
             c.add_periphery(node.id);
@@ -146,7 +146,7 @@ struct ConductanceAugmenter {
 
 impl AugmentingConfig for AugmentByMeanDegree {
     type Augmenter = MeanDegreeAugmenter;
-    fn augmenter(&self, bg: &Graph<Node>, c: &Cluster) -> MeanDegreeAugmenter {
+    fn augmenter(&self, bg: &DefaultGraph, c: &Cluster) -> MeanDegreeAugmenter {
         let ls = bg.num_edges_inside(&c.core());
         let threshold = ls as f64 / c.core_nodes.len() as f64;
         MeanDegreeAugmenter { threshold, ls }
@@ -155,7 +155,7 @@ impl AugmentingConfig for AugmentByMeanDegree {
 
 impl AugmentingConfig for AugmentByConductance {
     type Augmenter = ConductanceAugmenter;
-    fn augmenter(&self, bg: &Graph<Node>, c: &Cluster) -> ConductanceAugmenter {
+    fn augmenter(&self, bg: &DefaultGraph, c: &Cluster) -> ConductanceAugmenter {
         let subset = c.core();
         let online_conductance = OnlineConductance::new(bg, &subset);
         ConductanceAugmenter {
@@ -166,7 +166,7 @@ impl AugmentingConfig for AugmentByConductance {
 }
 
 impl Augmenter<AugmentByMeanDegree> for MeanDegreeAugmenter {
-    fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
+    fn query(&mut self, _bg: &DefaultGraph, c: &Cluster, node: &Node) -> bool {
         let d = node.degree_inside(&c.core());
         if d <= 0 {
             return false;
@@ -187,7 +187,7 @@ impl Augmenter<AugmentByMeanDegree> for MeanDegreeAugmenter {
 }
 
 impl Augmenter<AugmentByConductance> for ConductanceAugmenter {
-    fn query(&mut self, bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
+    fn query(&mut self, bg: &DefaultGraph, c: &Cluster, node: &Node) -> bool {
         let threshold = self.threshold;
         let oc = &mut self.online_conductance;
         let (_, success) = oc.update_conductance_if(bg, node, &c.core(), |c| c <= threshold);
@@ -239,7 +239,7 @@ struct McdKAugmenter {
 }
 
 impl McdKAugmenter {
-    fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
+    fn query(&mut self, _bg: &DefaultGraph, c: &Cluster, node: &Node) -> bool {
         let cluster_core = c.core();
         let cluster_all = c.all();
         let num_core_neighbors = node.edges_inside(&cluster_core).count();
@@ -257,7 +257,7 @@ impl McdKAugmenter {
         true
     }
 
-    fn new(threshold: usize, bg: &Graph<Node>, c: &Cluster) -> Self {
+    fn new(threshold: usize, bg: &DefaultGraph, c: &Cluster) -> Self {
         McdKAugmenter {
             threshold,
             total_l: bg.m(),
@@ -272,7 +272,7 @@ impl McdKAugmenter {
 }
 
 impl Augmenter<AugmentByMcd> for McdKAugmenter {
-    fn query(&mut self, bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
+    fn query(&mut self, bg: &DefaultGraph, c: &Cluster, node: &Node) -> bool {
         McdKAugmenter::query(self, bg, c, node)
     }
 
@@ -282,7 +282,7 @@ impl Augmenter<AugmentByMcd> for McdKAugmenter {
 }
 
 impl Augmenter<AugmentByK> for McdKAugmenter {
-    fn query(&mut self, bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
+    fn query(&mut self, bg: &DefaultGraph, c: &Cluster, node: &Node) -> bool {
         McdKAugmenter::query(self, bg, c, node)
     }
 
@@ -298,7 +298,7 @@ struct DensityThresholdAugmenter {
 }
 
 impl Augmenter<AugmentByDensityThreshold> for DensityThresholdAugmenter {
-    fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
+    fn query(&mut self, _bg: &DefaultGraph, c: &Cluster, node: &Node) -> bool {
         let cluster_all = c.all();
         let n_prime = c.size() + 1;
         let d = node.degree_inside(&cluster_all);
@@ -334,7 +334,7 @@ impl CpmAugmenter {
 }
 
 impl Augmenter<AugmentByCpm> for CpmAugmenter {
-    fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
+    fn query(&mut self, _bg: &DefaultGraph, c: &Cluster, node: &Node) -> bool {
         let cluster_all = c.all();
         let n_prime = c.size() + 1;
         let d = node.degree_inside(&cluster_all);
@@ -365,7 +365,7 @@ struct ModularityAugmenter {
 }
 
 impl Augmenter<AugmentByMod> for ModularityAugmenter {
-    fn query(&mut self, _bg: &Graph<Node>, c: &Cluster, node: &Node) -> bool {
+    fn query(&mut self, _bg: &DefaultGraph, c: &Cluster, node: &Node) -> bool {
         let cluster_all = c.all();
         let ls_prime = node.edges_inside(&cluster_all).count() + self.ls;
         let ds_prime = node.degree() + self.ds;
@@ -381,7 +381,7 @@ impl Augmenter<AugmentByMod> for ModularityAugmenter {
 }
 
 pub fn augment_clusters_from_cli_config<'a, X: ExpandStrategy, S: AbstractSubset<'a> + Sync>(
-    bg: &'a Graph<Node>,
+    bg: &'a DefaultGraph,
     clustering: &mut Clustering,
     candidates: &'a S,
     config: &AocConfig,
@@ -434,7 +434,7 @@ pub fn augment_clusters_local_expand<
     X: AugmentingConfig + Clone + Sync,
     S: AbstractSubset<'a> + Sync,
 >(
-    bg: &'a Graph<Node>,
+    bg: &'a DefaultGraph,
     clustering: &mut Clustering,
     candidates: &S,
     augmenting_config: &X,
@@ -497,7 +497,7 @@ pub fn augment_clusters_local_expand<
 }
 
 pub fn augment_clusters<'a, X: AugmentingConfig + Clone + Sync, S: AbstractSubset<'a> + Sync>(
-    bg: &'a Graph<Node>,
+    bg: &'a DefaultGraph,
     clustering: &mut Clustering,
     candidates: &'a S,
     augmenting_config: &X,
@@ -531,7 +531,7 @@ pub fn augment_clusters<'a, X: AugmentingConfig + Clone + Sync, S: AbstractSubse
 
 pub trait ExpandStrategy {
     fn expand<'a, X: AugmentingConfig + Clone + Sync, S: AbstractSubset<'a> + Sync>(
-        bg: &'a Graph<Node>,
+        bg: &'a DefaultGraph,
         clustering: &mut Clustering,
         candidate_ids: &'a S,
         augmenting_config: &X,
@@ -543,7 +543,7 @@ pub struct LocalExpandStrategy {}
 
 impl ExpandStrategy for LegacyExpandStrategy {
     fn expand<'a, X: AugmentingConfig + Clone + Sync, S: AbstractSubset<'a> + Sync>(
-        bg: &'a Graph<Node>,
+        bg: &'a DefaultGraph,
         clustering: &mut Clustering,
         candidate_ids: &'a S,
         augmenting_config: &X,
@@ -554,7 +554,7 @@ impl ExpandStrategy for LegacyExpandStrategy {
 
 impl ExpandStrategy for LocalExpandStrategy {
     fn expand<'a, X: AugmentingConfig + Clone + Sync, S: AbstractSubset<'a> + Sync>(
-        bg: &'a Graph<Node>,
+        bg: &'a DefaultGraph,
         clustering: &mut Clustering,
         candidate_ids: &'a S,
         augmenting_config: &X,

@@ -4,7 +4,7 @@ use lz4::EncoderBuilder;
 use probabilistic_collections::bloom::BloomFilter;
 use serde::{Deserialize, Serialize};
 
-use crate::{AbstractSubset, Graph, Node};
+use crate::{AbstractSubset, Graph, Node, DefaultGraph};
 
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NameSet {
@@ -84,7 +84,7 @@ pub struct NeighborhoodFilter {
 }
 
 impl NeighborhoodFilter {
-    pub fn new<'a, X>(bg: &Graph<Node>, view: &'a X) -> Self
+    pub fn new<'a, X>(bg: &DefaultGraph, view: &'a X) -> Self
     where
         X: AbstractSubset<'a>,
     {
@@ -100,7 +100,7 @@ impl NeighborhoodFilter {
         Self { filter }
     }
 
-    pub fn add_neighbors_of(&mut self, bg: &Graph<Node>, node_id: usize) {
+    pub fn add_neighbors_of(&mut self, bg: &DefaultGraph, node_id: usize) {
         let node = &bg.nodes[node_id];
         for neighbor_id in &node.edges {
             self.filter.insert(neighbor_id);

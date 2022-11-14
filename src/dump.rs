@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, path::Path};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Graph, Node};
+use crate::{Graph, Node, DefaultGraph};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphDump {
@@ -11,7 +11,7 @@ pub struct GraphDump {
     pub degrees: BTreeMap<usize, usize>,
 }
 
-pub fn dump_graph(graph: &Graph<Node>) -> GraphDump {
+pub fn dump_graph(graph: &DefaultGraph) -> GraphDump {
     let mut degrees = BTreeMap::new();
     for node in graph.nodes.iter() {
         let degree = node.degree();
@@ -25,7 +25,7 @@ pub fn dump_graph(graph: &Graph<Node>) -> GraphDump {
     }
 }
 
-pub fn dump_graph_to_json<P: AsRef<Path>>(graph: &Graph<Node>, p: P) -> anyhow::Result<()> {
+pub fn dump_graph_to_json<P: AsRef<Path>>(graph: &DefaultGraph, p: P) -> anyhow::Result<()> {
     let dump = dump_graph(graph);
     let json = serde_json::to_string_pretty(&dump)?;
     std::fs::write(p, json)?;

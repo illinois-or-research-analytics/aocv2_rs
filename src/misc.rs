@@ -47,7 +47,7 @@ impl UniverseSet {
         }
     }
 
-    pub fn new_from_graph(g: &Graph<Node>) -> Self {
+    pub fn new_from_graph(g: &DefaultGraph) -> Self {
         Self::new(g.n())
     }
 }
@@ -84,7 +84,7 @@ impl<'a> AbstractSubset<'a> for OwnedSubset {
 }
 
 impl NodeList {
-    pub fn from_raw_file<P>(g: &Graph<Node>, p: P) -> anyhow::Result<Self>
+    pub fn from_raw_file<P>(g: &DefaultGraph, p: P) -> anyhow::Result<Self>
     where
         P: AsRef<std::path::Path>,
     {

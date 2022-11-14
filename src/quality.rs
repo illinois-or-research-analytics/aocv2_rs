@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_with::serde_as;
 
+use crate::DefaultGraph;
 use crate::aoc::AocConfig;
 use crate::base::Graph;
 use crate::io::FilesSpecifier;
@@ -18,7 +19,7 @@ use crate::AbstractSubset;
 use crate::utils::calc_modularity_resolution;
 use crate::Clustering;
 use crate::Node;
-pub fn modularity<'a, X>(g: &'a Graph<Node>, c: &'a X) -> f64
+pub fn modularity<'a, X>(g: &'a DefaultGraph, c: &'a X) -> f64
 where
     X: AbstractSubset<'a>,
 {
@@ -31,7 +32,7 @@ where
     calc_modularity(ls, ds, big_l)
 }
 
-pub fn mcd<'a, X>(g: &'a Graph<Node>, c: &'a X) -> usize
+pub fn mcd<'a, X>(g: &'a DefaultGraph, c: &'a X) -> usize
 where
     X: AbstractSubset<'a>,
 {
@@ -51,7 +52,7 @@ pub struct ClusterInformation {
 }
 
 impl ClusterInformation {
-    pub fn from_single_cluster<'a, X>(g: &'a Graph<Node>, c: &'a X, quality: &AocConfig) -> Self
+    pub fn from_single_cluster<'a, X>(g: &'a DefaultGraph, c: &'a X, quality: &AocConfig) -> Self
     where
         X: AbstractSubset<'a>,
     {
@@ -87,7 +88,7 @@ impl ClusterInformation {
 
     // TODO: see if it is right to set mcd only among the core nodes
     pub fn vec_from_clustering(
-        g: &Graph<Node>,
+        g: &DefaultGraph,
         clus: &Clustering,
         quality: &AocConfig,
     ) -> Vec<Self> {
@@ -151,7 +152,7 @@ pub struct GlobalStatistics<const N: usize> {
 }
 
 impl<const N: usize> GlobalStatistics<N> {
-    pub fn from_clustering(g: &Graph<Node>, clus: &Clustering) -> Self {
+    pub fn from_clustering(g: &DefaultGraph, clus: &Clustering) -> Self {
         let num_clusters = clus.clusters.len();
         let node_coverage =
             clus.clusters.values().map(|x| x.size()).sum::<usize>() as f64 / g.n() as f64;
@@ -186,7 +187,7 @@ impl<const N: usize> GlobalStatistics<N> {
     }
 
     pub fn from_clustering_with_local(
-        g: &Graph<Node>,
+        g: &DefaultGraph,
         clus: &Clustering,
         local_info: &[ClusterInformation],
     ) -> Self {
