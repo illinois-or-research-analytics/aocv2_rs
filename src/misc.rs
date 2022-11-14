@@ -5,7 +5,7 @@ use ahash::AHashSet;
 use crate::{AbstractSubset, Cluster, DefaultGraph, Graph, Node};
 
 /// A wrapper to a list of node ids, designed for easy construction
-/// from files (w.r.t. a graph).
+/// from files. The node ids stored internally are internal ids mapped from the original ids.
 pub struct NodeList {
     pub node_ids: Vec<usize>,
 }
@@ -14,6 +14,11 @@ pub struct NodeList {
 /// as a struct including a vector of node ids (for fast iteration)
 /// and a set of node ids (for fast membership queries).
 /// Use [`Self::new()`] to construct a subset from a vector of node ids.
+/// 
+/// # Tradeoffs
+/// 
+/// It is obvious that `OwnedSubset` can also be implemented by a single
+/// `BTreeMap`. The current choice of data structures is arguable.
 pub struct OwnedSubset {
     pub node_ids: Vec<usize>,
     pub node_inclusion: AHashSet<usize>,
@@ -37,7 +42,7 @@ impl OwnedSubset {
 
 /// A ``subset'' of nodes containing everything
 pub struct UniverseSet {
-    nodes: Vec<usize>, // FIXME: definitely do not need to store this
+    nodes: Vec<usize>, // FIXME: definitely no need to store this.
 }
 
 impl UniverseSet {
@@ -68,6 +73,18 @@ impl FromIterator<usize> for OwnedSubset {
     fn from_iter<I: IntoIterator<Item = usize>>(iter: I) -> Self {
         let node_ids = iter.into_iter().collect();
         Self::new(node_ids)
+    }
+}
+
+impl From<Vec<usize>> for OwnedSubset {
+    fn from(node_ids: Vec<usize>) -> Self {
+        Self::new(node_ids)
+    }
+}
+
+impl <const N: usize> From<[usize; N]> for OwnedSubset {
+    fn from(node_ids: [usize; N]) -> Self {
+        Self::new(node_ids.to_vec())
     }
 }
 
@@ -105,6 +122,18 @@ impl NodeList {
 
     pub fn into_owned_subset(self) -> OwnedSubset {
         OwnedSubset::new(self.node_ids)
+    }
+}
+
+impl From<NodeList> for OwnedSubset {
+    fn from(node_list: NodeList) -> Self {
+        node_list.into_owned_subset()
+    }
+}
+
+impl From<NodeList> for Cluster {
+    fn from(node_list: NodeList) -> Self {
+        node_list.into_cluster()
     }
 }
 

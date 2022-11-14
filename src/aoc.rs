@@ -25,7 +25,7 @@ impl AugmentingConfig for AugmentByMcd {
     type Augmenter = McdKAugmenter;
 
     fn augmenter(&self, bg: &DefaultGraph, c: &Cluster) -> Self::Augmenter {
-        McdKAugmenter::new(c.mcd(bg).unwrap_or_default(), bg, c)
+        McdKAugmenter::new(c.core_mcd(bg).unwrap_or_default(), bg, c)
     }
 }
 
@@ -576,7 +576,7 @@ mod tests {
             threshold: Some(0.5),
         };
         let g = Graph::parse_edgelist_from_str("0 1\n1 2\n2 3\n 3 4")?;
-        let mut c = Cluster::from_iter(vec![3, 4]);
+        let mut c = Cluster::from_iter([3, 4]);
         let mut augmenter = augment_config.augmenter(&g, &c);
         assert_eq!(2, c.size());
         assert!(augmenter.query_and_admit(&g, &mut c, g.node_from_label(2)));
@@ -592,10 +592,8 @@ mod tests {
     pub fn cpm_augmenter_makes_sense() -> anyhow::Result<()> {
         let r = 0.5;
         let augment_config = AugmentByCpm { resolution: r };
-        let g: DefaultGraph = vec![(0, 1), (1, 2), (2, 0), (3, 4), (5, 6)]
-            .into_iter()
-            .collect();
-        let mut c = Cluster::from_iter(vec![0, 1]);
+        let g: DefaultGraph = [(0, 1), (1, 2), (2, 0), (3, 4), (5, 6)].into_iter().collect();
+        let mut c = Cluster::from_iter([0, 1]);
         let mut augmenter = augment_config.augmenter(&g, &c);
         assert_eq!(1, augmenter.ls);
         assert_eq!(g.cpm_of(&c.core(), r), augmenter.original_cpm);

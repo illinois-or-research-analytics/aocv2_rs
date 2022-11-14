@@ -2,7 +2,7 @@ pub mod concrete_examples {
     use crate::base::*;
     pub fn wikipedia_conductance_graph() -> DefaultGraph {
         // See https://en.wikipedia.org/wiki/Conductance_(graph)#/media/File:Graph_conductance.svg
-        vec![
+        [
             (0, 1),
             (0, 2),
             (0, 3),
@@ -25,9 +25,9 @@ mod tests {
     #[test]
     pub fn conductance_works() {
         let g = super::concrete_examples::wikipedia_conductance_graph();
-        let s1 = vec![0].into_iter().collect::<OwnedSubset>();
-        let s2 = vec![0, 1].into_iter().collect::<OwnedSubset>();
-        let s3 = vec![0, 1, 2, 3, 4].into_iter().collect::<OwnedSubset>();
+        let s1 = [0].into_iter().collect::<OwnedSubset>();
+        let s2 = [0, 1].into_iter().collect::<OwnedSubset>();
+        let s3 = [0, 1, 2, 3, 4].into_iter().collect::<OwnedSubset>();
         assert_eq!(1.0, g.conductance_of(&s1));
         assert_eq!(2.0 / 3.0, g.conductance_of(&s2));
         assert_eq!(0.6, g.conductance_of(&s3));

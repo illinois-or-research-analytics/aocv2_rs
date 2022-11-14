@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{AbstractSubset, Graph, Node, DefaultGraph};
 
+/// Internal API used for allocating new internal ids for nodes
+/// when seeing external ids.
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NameSet {
     pub next_id: usize,
@@ -14,14 +16,17 @@ pub struct NameSet {
 }
 
 impl NameSet {
+    /// Given an external id, retrieve the internal id
     pub fn retrieve(&self, name: usize) -> Option<usize> {
         self.forward.get(&name).copied()
     }
 
+    /// Given an internal id, retrieve the external id
     pub fn rev(&self, id: usize) -> Option<usize> {
         self.rev.get(id).copied()
     }
 
+    /// Given an internal id and external id pair, insert them into the mapping
     pub fn bi_insert(&mut self, name: usize, id: usize) {
         self.forward.insert(name, id);
         // make sure self.rev is long enough
@@ -32,6 +37,7 @@ impl NameSet {
     }
 }
 
+/// Binomial coefficient (n choose 2)
 pub fn choose2(n: usize) -> usize {
     if n == 0 {
         0
@@ -78,6 +84,9 @@ where
     Ok(data)
 }
 
+/// Internal API used for the legacy strategy of expansion
+/// to quickly rule out nodes that are disconnected to a cluster.
+/// Internally uses a bloom filter.
 #[derive(Debug)]
 pub struct NeighborhoodFilter {
     filter: BloomFilter<usize>,

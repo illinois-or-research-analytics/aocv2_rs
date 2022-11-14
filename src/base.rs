@@ -179,7 +179,7 @@ impl TransientNode {
 /// AOCluster uses a traditional architecture of storing its nodes inside vectors.
 /// However, in order to support non-continuous (gapped) node ids from the input graph,
 /// the *internal* ids differ from the external ids. Therefore AOCluster always
-/// maps back the id when writing the output. See [NameSet](crate::misc::NameSet) and the
+/// maps back the id when writing the output. See [NameSet](utils::NameSet) and the
 /// correposponding field to understand the mapping.
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Graph<NodeT>
@@ -249,6 +249,7 @@ impl FromIterator<(usize, usize)> for Graph<Node> {
 }
 
 impl Graph<Node> {
+    /// Constructs a `DefaultGraph` from an iterator of integer edges.
     pub fn from_integer_edges(edges: impl Iterator<Item = (usize, usize)>) -> Self {
         let mut graph = Graph::<TransientNode>::default();
         for (from, to) in edges {
@@ -380,13 +381,15 @@ impl Graph<Node> {
         m as f64 / choose2(n) as f64
     }
 
+    /// The degree volume of the subset `X` defined as the sum of the global degrees.
     pub fn volume_inside<'a, X>(&'a self, view: &'a X) -> usize
     where
         X: AbstractSubset<'a>,
     {
         view.each_node_id().map(|it| self.nodes[*it].degree()).sum()
     }
-
+    
+    /// The total number of out-going edges from a cluster
     pub fn cut_of<'a, X>(&'a self, view: &'a X) -> usize
     where
         X: AbstractSubset<'a>,
@@ -396,6 +399,7 @@ impl Graph<Node> {
             .sum::<usize>()
     }
 
+    /// The conductance of the cut induced by `X`
     pub fn conductance_of<'a, X>(&'a self, view: &'a X) -> f64
     where
         X: AbstractSubset<'a>,
@@ -407,12 +411,21 @@ impl Graph<Node> {
         cut as f64 / volume as f64
     }
 
+    /// The Constant Potts Model (CPM) value of a subset `X`
     pub fn cpm_of<'a, X>(&'a self, view: &'a X, resolution: f64) -> f64
     where
         X: AbstractSubset<'a>,
     {
         let ls = self.num_edges_inside(view);
         utils::calc_cpm_resolution(ls, view.num_nodes(), resolution)
+    }
+
+    /// The minimum intra-cluster degree of a subset `X`
+    pub fn mcd_of<'a, X>(&'a self, view: &'a X) -> Option<usize>
+    where
+        X: AbstractSubset<'a>,
+    {
+        self.degrees_inside(view).min()
     }
 }
 
@@ -421,6 +434,18 @@ impl Graph<Node> {
 ///
 /// To view different parts of the cluster as mathematical subsets
 /// use [`Self::core()`], [`Self::periphery()`], [`Self::all()`].
+/// 
+/// # Design
+/// Given input cluster `K`, intuitively AOC augments `K` greedily.
+/// Intuitively, it only suffices to keep track of `K` (say, in a `HashSet`).
+/// Unfortunately, the design of AOC with criteria `k` or `mcd` is
+/// defined with respect to the "original" cluster, also known as the "core".
+/// 
+/// Therefore, it has been decided that a cluster has two components --
+/// the "core", the original cluster, and also the "periphery",
+/// containing all the nodes augmented to the cluster. One consequence
+/// of this is that the entirety of the cluster (both the core and the periphery)
+/// can be viewed only by [`Self::all()`].
 #[derive(Default, Debug, Clone)]
 pub struct Cluster {
     pub core_nodes: AHashSet<usize>,
@@ -428,16 +453,20 @@ pub struct Cluster {
 }
 
 impl Cluster {
+    /// Add a node (using its node id) to the cluster.
     pub fn add_core(&mut self, node: usize) {
         self.core_nodes.insert(node);
     }
 
+    /// Add a node (using its node id) to the periphery.
     pub fn add_periphery(&mut self, node: usize) {
         self.periphery_nodes.insert(node);
     }
 
-    pub fn mcd(&self, bg: &Graph<Node>) -> Option<usize> {
-        bg.degrees_inside(&self.core()).min()
+    /// The minimum intra-cluster degree of the cluster at its core.
+    /// A wrapper over [`Graph::mcd_of()`].
+    pub fn core_mcd(&self, bg: &DefaultGraph) -> Option<usize> {
+        bg.mcd_of(&self.core())
     }
 
     /// Number of nodes of the entirety (core + periphery)
@@ -455,6 +484,7 @@ impl Cluster {
         self.size() > 1
     }
 
+    /// Does either the core or the periphery contain the node?
     pub fn contains(&self, node: &usize) -> bool {
         self.core_nodes.contains(node) || self.periphery_nodes.contains(node)
     }
@@ -470,16 +500,19 @@ impl FromIterator<usize> for Cluster {
     }
 }
 
+/// Used internally in [ClusterView]
 pub enum ClusterViewType {
     Core,
     Periphery,
 }
 
+/// Internally used for [`Cluster::core()`], [`Cluster::periphery()`]
 pub struct ClusterView<'a> {
     pub cluster: &'a Cluster,
     pub view_type: ClusterViewType,
 }
 
+/// Internally used for [`Cluster::all()`]]
 pub struct ClusterEntireView<'a> {
     pub cluster: &'a Cluster,
 }
@@ -521,6 +554,7 @@ impl<'a> AbstractSubset<'a> for ClusterView<'a> {
 }
 
 impl<'a> Cluster {
+    /// Extract the subset of the graph associated with the core of the cluster.
     pub fn core(&'a self) -> ClusterView<'a> {
         ClusterView {
             cluster: self,
@@ -528,6 +562,7 @@ impl<'a> Cluster {
         }
     }
 
+    /// Extract the subset of the graph associated with the periphery of the cluster.
     pub fn periphery(&'a self) -> ClusterView<'a> {
         ClusterView {
             cluster: self,
@@ -535,17 +570,25 @@ impl<'a> Cluster {
         }
     }
 
+    /// Extract the subset of the graph associated with the entirety of the cluster.
     pub fn all(&'a self) -> ClusterEntireView<'a> {
         ClusterEntireView { cluster: self }
     }
 }
 
+
+/// A clustering, or a collection of labeled clusters.
+/// The labelling is assumed to be integers.
 pub struct Clustering {
+    /// the raw data of the clusters, a map from the cluster id to the cluster
     pub clusters: BTreeMap<usize, Cluster>,
+    /// "attention", defined as the minimum sized cluster that we want to focus/augment on
     pub attention: usize,
 }
 
 impl Clustering {
+    /// Construct a clustering given a background graph and an existing
+    /// `node_id cluster_id`-based clustering.
     pub fn parse_from_reader<R: Read + BufRead>(
         bg: &Graph<Node>,
         reader: R,
@@ -599,6 +642,7 @@ impl Clustering {
         })
     }
 
+    /// Shorthand for `parse_from_reader`
     pub fn parse_from_file<P>(bg: &Graph<Node>, path: P, reverse: bool) -> anyhow::Result<Self>
     where
         P: AsRef<Path>,
@@ -608,6 +652,7 @@ impl Clustering {
         Self::parse_from_reader(bg, reader, reverse)
     }
 
+    /// Write the clustering to a writer
     pub fn write_raw<W>(
         &self,
         mut writer: W,
@@ -634,6 +679,7 @@ impl Clustering {
         Ok(())
     }
 
+    /// Shorthand over `write_raw`
     pub fn write_file<P>(
         &self,
         graph: &Graph<Node>,
@@ -648,6 +694,7 @@ impl Clustering {
         self.write_raw(writer, graph, legacy_order)
     }
 
+    /// Only keep the clusters that satisfy `f`, analogous to `BTreeMap::retain`
     pub fn retain<F>(&mut self, f: F)
     where
         F: FnMut(&usize, &mut Cluster) -> bool,
@@ -655,6 +702,8 @@ impl Clustering {
         self.clusters.retain(f);
     }
 
+    /// The conductance of the clustering defined as the minimum over all cuts
+    /// induced by the clusters.
     pub fn conductance(&self, graph: &Graph<Node>) -> Option<f64> {
         self.clusters
             .values()
@@ -665,7 +714,7 @@ impl Clustering {
 }
 
 impl<'a> Clustering {
-    // par_it_mut of key value pairs of clusters with size >= attention
+    /// Mutable iterator over all clusters that are above the attention
     pub fn worthy_clusters(
         &'a mut self,
     ) -> impl ParallelIterator<Item = (&'a usize, &'a mut Cluster)> {
@@ -730,7 +779,7 @@ mod tests {
     #[test]
     pub fn graph_from_edgelist() {
         let str_g = DefaultGraph::parse_edgelist_from_str("0 1\n1 2\n2 3\n 3 4").unwrap();
-        let usize_g: DefaultGraph = vec![(0, 1), (1, 2), (2, 3), (3, 4)].into_iter().collect();
+        let usize_g: DefaultGraph = [(0, 1), (1, 2), (2, 3), (3, 4)].into_iter().collect();
         assert_eq!(str_g, usize_g);
     }
 
