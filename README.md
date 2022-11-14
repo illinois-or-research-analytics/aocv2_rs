@@ -1,6 +1,8 @@
 AOCluster
 ===================
 
+![CI status](https://github.com/illinois-or-research-analytics/aocv2_rs/actions/workflows/ci.yml/badge.svg)
+
 Generic overlapping cluster using greedy augmentation. Given a clustering of a network, this method enlarges the clusters by allowing nodes from the network to be added to the clusters. AOC performs this augmentation based on a user-selected cluster criterion score, such as modularity[^1], the Constant Potts Model[^2] (CPM) score, or the minimum intra-cluster degree[^3]. When considering whether a node can be added to a cluster, the addition is permitted only if the criterion score of the enlarged cluster does not drop below the criterion score of the original cluster.
 
 [^1]: Newman, Mark EJ, and Michelle Girvan. "Finding and evaluating community structure in networks." *Physical review E* 69.2 (2004): 026113.
