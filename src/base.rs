@@ -18,15 +18,14 @@ use std::{
 };
 use tracing::debug;
 
-
 /// A trait for nodes in a graph.
 /// The (weak) reason this exists is to handle polymorphism in the underlying edge storage and edge topology.
 /// See [TransientNode](crate::base::TransientNode) and [Node](crate::base::Node) for concrete implementations.
-/// 
+///
 /// As always, the ids stored inside the nodes are the *internal* ids mapped from the original ids.
-/// 
+///
 /// # Tradeoffs
-/// 
+///
 /// Due to how Rust handles memory safety, the nodes canonically only store the node ids of its outgoing edges.
 pub trait AbstractNode {
     fn assign_id(&mut self, id: usize);

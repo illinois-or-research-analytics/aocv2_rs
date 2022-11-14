@@ -316,7 +316,10 @@ fn main() -> anyhow::Result<()> {
                     for c in cluster_infos.iter_mut() {
                         c.variant = maybe_label.map(|it| it.to_string());
                     }
-                    local_entries.entry(filename).or_default().extend(cluster_infos);
+                    local_entries
+                        .entry(filename)
+                        .or_default()
+                        .extend(cluster_infos);
                 }
             }
             if let Some(global) = global {
@@ -327,8 +330,10 @@ fn main() -> anyhow::Result<()> {
                     let clus =
                         Clustering::parse_from_file(&graph, &filename, legacy_cid_nid_order)?;
                     let global_stats = GlobalStatistics::<3>::from_clustering_with_local(
-                        &graph, 
-                        &clus, local_entries.get(filename).unwrap());
+                        &graph,
+                        &clus,
+                        local_entries.get(filename).unwrap(),
+                    );
                     global_entries.insert(label, global_stats);
                 }
                 let json = serde_json::to_string_pretty(&global_entries)?;
