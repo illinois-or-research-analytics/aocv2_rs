@@ -18,9 +18,17 @@ use std::{
 };
 use tracing::debug;
 
+
+/// A trait for nodes in a graph.
+/// The (weak) reason this exists is to handle polymorphism in the underlying edge storage and edge topology.
+/// See [TransientNode](crate::base::TransientNode) and [Node](crate::base::Node) for concrete implementations.
+/// 
+/// As always, the ids stored inside the nodes are the *internal* ids mapped from the original ids.
+/// 
+/// # Tradeoffs
+/// 
+/// Due to how Rust handles memory safety, the nodes canonically only store the node ids of its outgoing edges.
 pub trait AbstractNode {
-    //! A trait for nodes in a graph.
-    //! The (weak) reason this exists is to handle polymorphism in the underlying edge storage.
     fn assign_id(&mut self, id: usize);
     fn add_out_edge(&mut self, target: usize);
     fn add_in_edge(&mut self, from: usize);
@@ -43,6 +51,7 @@ pub trait AbstractSubset<'a> {
 
 /// A node specialized to eliminate parallel edges during construction, using sets as the underlying storage of edges.
 /// It is not designed to be the permanent representation of nodes and should be converted after building the graph.
+/// The motivation is for robustness and reducing human errors. See [Node](crate::base::Node) for the permanent representation.
 #[derive(Default, Debug, Clone)]
 pub struct TransientNode {
     id: usize,
@@ -67,7 +76,7 @@ impl AbstractNode for TransientNode {
     }
 }
 
-/// The default node type, contains information both the directed and the undirected topology
+/// The default node type, contains information only on the undirected topology
 /// with storage of edges as a vector for maximum efficiency of iteration.
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Node {
@@ -78,6 +87,7 @@ pub struct Node {
 }
 
 impl Node {
+    /// Iterates the incident node ids inside the subset.
     pub fn edges_inside<'a, X>(&'a self, c: &'a X) -> impl Iterator<Item = &'a usize> + 'a
     where
         X: AbstractSubset<'a>,
@@ -85,6 +95,7 @@ impl Node {
         self.edges.iter().filter(move |&e| c.contains(e))
     }
 
+    /// Iterates the incident node ids outside the subset.
     pub fn edges_outside<'a, X>(&'a self, c: &'a X) -> impl Iterator<Item = &'a usize> + 'a
     where
         X: AbstractSubset<'a>,
@@ -92,6 +103,7 @@ impl Node {
         self.edges.iter().filter(move |&e| !c.contains(e))
     }
 
+    /// Counts the number of incident nodes inside the subset.
     pub fn degree_inside<'a, X>(&'a self, c: &'a X) -> usize
     where
         X: AbstractSubset<'a>,
@@ -99,6 +111,7 @@ impl Node {
         self.edges_inside(c).count()
     }
 
+    /// Counts the number of incident nodes outside the subset.
     pub fn degree_outside<'a, X>(&'a self, c: &'a X) -> usize
     where
         X: AbstractSubset<'a>,
@@ -106,6 +119,7 @@ impl Node {
         self.edges_outside(c).count()
     }
 
+    /// Checks if the node is relevant (i.e., has any connection) to the subset.
     pub fn is_relevant_to<'a, X>(&'a self, c: &'a X) -> bool
     where
         X: AbstractSubset<'a>,
@@ -113,18 +127,22 @@ impl Node {
         self.degree_inside(c) > 0
     }
 
+    /// The global degree of the node
     pub fn degree(&self) -> usize {
         self.edges.len()
     }
 
+    /// Retrieves the indegree of the node. Due to being undirected, this is the same as the degree.
     pub fn indegree(&self) -> usize {
         self.degree()
     }
 
+    /// Retrieves the outdegree of the node. Due to being undirected, this is the same as the degree.
     pub fn outdegree(&self) -> usize {
         self.degree()
     }
 
+    /// The "total degree" of the node. This is currently double the degree.
     pub fn total_degree(&self) -> usize {
         self.indegree() + self.outdegree()
     }
@@ -158,6 +176,12 @@ impl TransientNode {
     }
 }
 
+/// A graph polymorphic over the underlying node type.
+/// AOCluster uses a traditional architecture of storing its nodes inside vectors.
+/// However, in order to support non-continuous (gapped) node ids from the input graph,
+/// the *internal* ids differ from the external ids. Therefore AOCluster always
+/// maps back the id when writing the output. See [NameSet](crate::misc::NameSet) and the
+/// correposponding field to understand the mapping.
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Graph<NodeT>
 where
@@ -168,6 +192,7 @@ where
     m_cache: usize,
 }
 
+/// The sane default undirected graph type
 pub type DefaultGraph = Graph<Node>;
 
 impl<'a, NodeT> Graph<NodeT>
@@ -191,21 +216,27 @@ where
         self.name_set.retrieve(s)
     }
 
+    /// Returns the number of nodes in the graph.
     pub fn n(&self) -> usize {
         self.nodes.len()
     }
+
+    /// Returns the number of edges in the graph.
     pub fn m(&self) -> usize {
         self.m_cache
     }
 
+    /// Returns the total degree of the graph.
     pub fn total_degree(&self) -> usize {
         self.m() * 2
     }
 
+    /// Creates a subset of the graph using *internal* node ids.
     pub fn owned_subset(&self, nodes: Vec<usize>) -> OwnedSubset {
         OwnedSubset::new(nodes)
     }
 
+    /// Retrieves the node using the external id.
     pub fn node_from_label(&'a self, label: usize) -> &'a NodeT {
         let nid = self.retrieve(label).unwrap();
         &self.nodes[nid]
