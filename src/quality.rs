@@ -136,7 +136,7 @@ impl<const N: usize> FromIterator<f64> for DistributionSummary<N> {
     }
 }
 
-impl <const N: usize> FromParallelIterator<f64> for DistributionSummary<N> {
+impl<const N: usize> FromParallelIterator<f64> for DistributionSummary<N> {
     fn from_par_iter<T: IntoParallelIterator<Item = f64>>(iter: T) -> Self {
         iter.into_par_iter().collect()
     }
