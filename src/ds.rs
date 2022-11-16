@@ -4,7 +4,9 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use itertools::Itertools;
+use rayon::prelude::FromParallelIterator;
 use rayon::prelude::IntoParallelRefIterator;
+use rayon::prelude::ParallelBridge;
 use rayon::prelude::ParallelIterator;
 use serde::Deserialize;
 use serde::Serialize;
@@ -81,16 +83,18 @@ impl VerboseGlobalStatistics<5> {
         resolution: f64,
     ) -> Self {
         let num_c = clustering.clusters(g).count();
-        let num_nodes_covered = BTreeSet::<usize>::from_iter(
+        let num_nodes_covered = BTreeSet::<usize>::from_par_iter(
             clustering
                 .clusters(g)
+                .par_bridge()
                 .flat_map(|x| x.core().each_node_id().copied().collect_vec()),
         )
         .len();
         let node_coverage = num_nodes_covered as f64 / g.n() as f64;
-        let edge_coverage = BTreeSet::<(usize, usize)>::from_iter(
+        let edge_coverage = BTreeSet::<(usize, usize)>::from_par_iter(
             clustering
                 .clusters(g)
+                .par_bridge()
                 .flat_map(|x| g.each_edge_inside(&x.core()).collect_vec()),
         )
         .len() as f64
@@ -98,10 +102,12 @@ impl VerboseGlobalStatistics<5> {
         let cluster_size = clustering.clusters(g).map(|x| x.size()).collect();
         let modularity_score = clustering
             .clusters(g)
+            .par_bridge()
             .map(|x| g.modularity_of(&x.core(), 1.0))
             .collect();
         let cpm_score = clustering
             .clusters(g)
+            .par_bridge()
             .map(|x| g.cpm_of(&x.core(), resolution))
             .collect();
         let mcd_score = clustering
@@ -110,10 +116,12 @@ impl VerboseGlobalStatistics<5> {
             .collect();
         let density_score = clustering
             .clusters(g)
+            .par_bridge()
             .map(|x| g.edge_density_inside(&x.core()))
             .collect();
         let treeness_score = clustering
             .clusters(g)
+            .par_bridge()
             .map(|x| g.treeness_of(&x.core()))
             .collect();
         let num_clusters_per_node = num_c as f64 / g.n() as f64;
@@ -145,7 +153,7 @@ pub fn calculate_statistics(
         let label = label.unwrap_or_else(|| &filepath);
         let clus = Clustering::parse_from_file(g, &filepath, false)?;
         let stats = configs
-            .par_iter()
+            .iter()
             .map(|config| {
                 let filtered_clustering = ClusteringWithFilter::new(&clus, config.clone());
                 let stats = VerboseGlobalStatistics::from_clustering_with_filter(

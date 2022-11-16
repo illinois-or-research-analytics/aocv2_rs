@@ -1,6 +1,8 @@
 use std::path::Path;
 
 use anyhow::bail;
+use rayon::prelude::FromParallelIterator;
+use rayon::prelude::IntoParallelIterator;
 use rayon::prelude::IntoParallelRefIterator;
 use rayon::prelude::ParallelBridge;
 use rayon::prelude::ParallelIterator;
@@ -131,6 +133,12 @@ impl<const N: usize> FromIterator<f64> for DistributionSummary<N> {
         Self {
             values: Box::new(values),
         }
+    }
+}
+
+impl <const N: usize> FromParallelIterator<f64> for DistributionSummary<N> {
+    fn from_par_iter<T: IntoParallelIterator<Item = f64>>(iter: T) -> Self {
+        iter.into_par_iter().collect()
     }
 }
 
