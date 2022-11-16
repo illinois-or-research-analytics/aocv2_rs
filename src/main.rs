@@ -24,6 +24,7 @@ use shadow_rs::shadow;
 use tracing::{info, warn};
 
 use crate::aoc::{augment_clusters_from_cli_config, LegacyExpandStrategy, LocalExpandStrategy};
+use crate::ds::calculate_statistics;
 use crate::dump::dump_graph_to_json;
 use crate::misc::{NodeList, OwnedSubset, UniverseSet};
 use crate::quality::{
@@ -142,6 +143,26 @@ enum SubCommand {
         /// Output path
         #[clap(short, long)]
         output: PathBuf,
+    },
+
+    Ds {
+        /// Path to the edgelist graph
+        #[clap(short, long)]
+        graph: PathBuf,
+        /// Path to the clusters/cluster file
+        #[clap(short, long, long, parse(try_from_str = io::parse_files_specifier))]
+        clusters: FilesSpecifier,
+        /// Path to the configuration file
+        #[clap(long)]
+        config: PathBuf,
+        #[clap(long)]
+        legacy_cid_nid_order: bool,
+        /// Output path
+        #[clap(short, long)]
+        output: PathBuf,
+        /// Resolution
+        #[clap(short, long, default_value_t = 1.0)]
+        resolution: f64,
     },
 }
 
@@ -408,6 +429,19 @@ fn main() -> anyhow::Result<()> {
                     .sum::<usize>()
             );
             clustering.write_file(&graph, output, legacy_cid_nid_order)?;
+        }
+        SubCommand::Ds {
+            graph,
+            clusters,
+            config,
+            legacy_cid_nid_order,
+            output,
+            resolution,
+        } => {
+            let graph = Graph::parse_from_file(&graph)?;
+            let config = serde_json::from_reader(File::open(config)?)?;
+            let stats = calculate_statistics(config, &clusters, resolution, &graph)?;
+            serde_json::to_writer_pretty(File::create(output)?, &stats)?;
         }
     }
     info!("AOC finished in {:?}", starting.elapsed());

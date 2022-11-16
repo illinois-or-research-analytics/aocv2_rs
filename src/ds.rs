@@ -4,17 +4,22 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use itertools::Itertools;
+use rayon::prelude::IntoParallelRefIterator;
+use rayon::prelude::ParallelIterator;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_with::serde_as;
+use tracing::debug;
 
+use crate::io::FilesSpecifier;
+use crate::quality::files_and_labels;
 use crate::quality::DistributionSummary;
 use crate::AbstractSubset;
 use crate::Cluster;
 use crate::Clustering;
 use crate::DefaultGraph;
 
-#[derive(Hash, PartialEq)]
+#[derive(Hash, PartialEq, Serialize, Deserialize, Clone)]
 pub enum ClusteringFilter {
     None(),
     NotTree(),
@@ -39,17 +44,17 @@ pub struct VerboseGlobalStatistics<const N: usize> {
 
 type StatisticsReport = BTreeMap<String, Vec<(Vec<ClusteringFilter>, VerboseGlobalStatistics<5>)>>;
 
-pub struct ClusteringWithFilter {
-    clustering: Clustering,
+pub struct ClusteringWithFilter<'a> {
+    clustering: &'a Clustering,
     filter: Vec<ClusteringFilter>,
 }
 
-impl ClusteringWithFilter {
-    fn new(clustering: Clustering, filter: Vec<ClusteringFilter>) -> Self {
+impl<'a> ClusteringWithFilter<'a> {
+    fn new(clustering: &'a Clustering, filter: Vec<ClusteringFilter>) -> Self {
         Self { clustering, filter }
     }
 
-    fn clusters<'a>(&'a self, g: &'a DefaultGraph) -> impl Iterator<Item = &Cluster> + 'a {
+    fn clusters(&'a self, g: &'a DefaultGraph) -> impl Iterator<Item = &Cluster> + 'a {
         self.clustering.clusters.values().filter(move |c| {
             self.filter.iter().all(|f| match f {
                 ClusteringFilter::None() => true,
@@ -125,4 +130,33 @@ impl VerboseGlobalStatistics<5> {
             num_clusters_per_node,
         }
     }
+}
+
+pub fn calculate_statistics(
+    configs: Vec<Vec<ClusteringFilter>>,
+    files: &FilesSpecifier,
+    resolution: f64,
+    g: &DefaultGraph,
+) -> anyhow::Result<StatisticsReport> {
+    let mut report =
+        BTreeMap::<String, Vec<(Vec<ClusteringFilter>, VerboseGlobalStatistics<5>)>>::new();
+    for (filepath, label) in files_and_labels(files) {
+        debug!("Processing {}", filepath);
+        let label = label.unwrap_or_else(|| &filepath);
+        let clus = Clustering::parse_from_file(g, &filepath, false)?;
+        let stats = configs
+            .par_iter()
+            .map(|config| {
+                let filtered_clustering = ClusteringWithFilter::new(&clus, config.clone());
+                let stats = VerboseGlobalStatistics::from_clustering_with_filter(
+                    g,
+                    &filtered_clustering,
+                    resolution,
+                );
+                (config.clone(), stats)
+            })
+            .collect();
+        report.insert(label.to_string(), stats);
+    }
+    Ok(report)
 }
