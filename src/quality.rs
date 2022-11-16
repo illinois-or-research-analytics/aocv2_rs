@@ -8,13 +8,13 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_with::serde_as;
 
-use crate::DefaultGraph;
 use crate::aoc::AocConfig;
 use crate::base::Graph;
 use crate::io::FilesSpecifier;
 use crate::utils::calc_cpm_resolution;
 use crate::utils::calc_modularity;
 use crate::AbstractSubset;
+use crate::DefaultGraph;
 
 use crate::utils::calc_modularity_resolution;
 use crate::Clustering;

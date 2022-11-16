@@ -1,5 +1,6 @@
 mod aoc;
 mod base;
+mod ds;
 mod dump;
 mod generators;
 mod graph_gen;

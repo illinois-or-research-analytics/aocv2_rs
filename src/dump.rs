@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, path::Path};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Graph, Node, DefaultGraph};
+use crate::{DefaultGraph, Graph, Node};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphDump {

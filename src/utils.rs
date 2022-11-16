@@ -4,7 +4,7 @@ use lz4::EncoderBuilder;
 use probabilistic_collections::bloom::BloomFilter;
 use serde::{Deserialize, Serialize};
 
-use crate::{AbstractSubset, Graph, Node, DefaultGraph};
+use crate::{AbstractSubset, DefaultGraph, Graph, Node};
 
 /// Internal API used for allocating new internal ids for nodes
 /// when seeing external ids.

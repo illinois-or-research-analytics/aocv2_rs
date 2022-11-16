@@ -14,9 +14,9 @@ pub struct NodeList {
 /// as a struct including a vector of node ids (for fast iteration)
 /// and a set of node ids (for fast membership queries).
 /// Use [`Self::new()`] to construct a subset from a vector of node ids.
-/// 
+///
 /// # Tradeoffs
-/// 
+///
 /// It is obvious that `OwnedSubset` can also be implemented by a single
 /// `BTreeMap`. The current choice of data structures is arguable.
 pub struct OwnedSubset {
@@ -82,7 +82,7 @@ impl From<Vec<usize>> for OwnedSubset {
     }
 }
 
-impl <const N: usize> From<[usize; N]> for OwnedSubset {
+impl<const N: usize> From<[usize; N]> for OwnedSubset {
     fn from(node_ids: [usize; N]) -> Self {
         Self::new(node_ids.to_vec())
     }

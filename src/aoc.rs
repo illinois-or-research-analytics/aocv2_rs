@@ -439,7 +439,7 @@ pub fn augment_clusters_local_expand<
     candidates: &S,
     augmenting_config: &X,
 ) {
-    let n_clusters = clustering.clusters.len() as u64;
+    let n_clusters = clustering.num_worthy_clusters() as u64;
     clustering
         .worthy_clusters()
         .progress_count(n_clusters)
@@ -592,7 +592,9 @@ mod tests {
     pub fn cpm_augmenter_makes_sense() -> anyhow::Result<()> {
         let r = 0.5;
         let augment_config = AugmentByCpm { resolution: r };
-        let g: DefaultGraph = [(0, 1), (1, 2), (2, 0), (3, 4), (5, 6)].into_iter().collect();
+        let g: DefaultGraph = [(0, 1), (1, 2), (2, 0), (3, 4), (5, 6)]
+            .into_iter()
+            .collect();
         let mut c = Cluster::from_iter([0, 1]);
         let mut augmenter = augment_config.augmenter(&g, &c);
         assert_eq!(1, augmenter.ls);

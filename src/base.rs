@@ -198,6 +198,8 @@ impl<'a, NodeT> Graph<NodeT>
 where
     NodeT: Default + AbstractNode,
 {
+    /// Given an external node id, returns the internal node id.
+    /// If the internal id is not allocated yet, a new one will be allocated.
     pub fn request(&mut self, s: usize) -> usize {
         return self.name_set.forward.get(&s).copied().unwrap_or_else(|| {
             let id = self.name_set.next_id;
@@ -211,6 +213,7 @@ where
         });
     }
 
+    /// Retrieves the internal id of the node with the given external id.
     pub fn retrieve(&self, s: usize) -> Option<usize> {
         self.name_set.retrieve(s)
     }
@@ -345,7 +348,16 @@ impl Graph<Node> {
     {
         view.each_node_id()
             .map(|it| &self.nodes[*it])
-            .flat_map(|it| it.edges_inside(view).map(|e| (it.id, *e)))
+            .flat_map(|it| {
+                it.edges_inside(view).map(|e| {
+                    let (u, v) = (it.id, *e);
+                    if u < v {
+                        (u, v)
+                    } else {
+                        (v, u)
+                    }
+                })
+            })
     }
 
     pub fn degrees_inside<'a, X>(&'a self, view: &'a X) -> impl Iterator<Item = usize> + 'a
@@ -388,7 +400,7 @@ impl Graph<Node> {
     {
         view.each_node_id().map(|it| self.nodes[*it].degree()).sum()
     }
-    
+
     /// The total number of out-going edges from a cluster
     pub fn cut_of<'a, X>(&'a self, view: &'a X) -> usize
     where
@@ -420,6 +432,29 @@ impl Graph<Node> {
         utils::calc_cpm_resolution(ls, view.num_nodes(), resolution)
     }
 
+    pub fn modularity_of<'a, X>(&'a self, view: &'a X, resolution: f64) -> f64
+    where
+        X: AbstractSubset<'a>,
+    {
+        let total_l = self.m();
+        let ls = self.num_edges_inside(view);
+        let ds = view
+            .each_node_id()
+            .map(|&n| self.nodes[n].degree())
+            .sum::<usize>();
+        let modularity = utils::calc_modularity_resolution(ls, ds, total_l, resolution);
+        modularity
+    }
+
+    pub fn treeness_of<'a, X>(&'a self, view: &'a X) -> f64
+    where
+        X: AbstractSubset<'a>,
+    {
+        let m = self.num_edges_inside(view) as f64;
+        let n = view.num_nodes() as f64;
+        return (m - n + 1.0) / n;
+    }
+
     /// The minimum intra-cluster degree of a subset `X`
     pub fn mcd_of<'a, X>(&'a self, view: &'a X) -> Option<usize>
     where
@@ -434,13 +469,13 @@ impl Graph<Node> {
 ///
 /// To view different parts of the cluster as mathematical subsets
 /// use [`Self::core()`], [`Self::periphery()`], [`Self::all()`].
-/// 
+///
 /// # Design
 /// Given input cluster `K`, intuitively AOC augments `K` greedily.
 /// Intuitively, it only suffices to keep track of `K` (say, in a `HashSet`).
 /// Unfortunately, the design of AOC with criteria `k` or `mcd` is
 /// defined with respect to the "original" cluster, also known as the "core".
-/// 
+///
 /// Therefore, it has been decided that a cluster has two components --
 /// the "core", the original cluster, and also the "periphery",
 /// containing all the nodes augmented to the cluster. One consequence
@@ -575,7 +610,6 @@ impl<'a> Cluster {
         ClusterEntireView { cluster: self }
     }
 }
-
 
 /// A clustering, or a collection of labeled clusters.
 /// The labelling is assumed to be integers.
@@ -722,6 +756,13 @@ impl<'a> Clustering {
             .par_iter_mut()
             .filter(|(_, cluster)| cluster.core_nodes.len() >= self.attention)
     }
+
+    pub fn num_worthy_clusters(&self) -> usize {
+        self.clusters
+            .iter()
+            .filter(|(_, cluster)| cluster.core_nodes.len() >= self.attention)
+            .count()
+    }
 }
 
 #[cfg(test)]
@@ -785,7 +826,7 @@ mod tests {
 
     #[test]
     pub fn graph_from_iter() {
-        let g: DefaultGraph = vec![
+        let g: DefaultGraph = [
             (99999, 99999),
             (3, 4),
             (1, 2),
