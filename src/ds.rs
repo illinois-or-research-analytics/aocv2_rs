@@ -21,9 +21,9 @@ use crate::DefaultGraph;
 
 #[derive(Hash, PartialEq, Serialize, Deserialize, Clone)]
 pub enum ClusteringFilter {
-    None(),
-    NotTree(),
-    OnlyTree(),
+    None,
+    NotTree,
+    OnlyTree,
     SizeLowerBound(usize),
 }
 
@@ -57,14 +57,14 @@ impl<'a> ClusteringWithFilter<'a> {
     fn clusters(&'a self, g: &'a DefaultGraph) -> impl Iterator<Item = &Cluster> + 'a {
         self.clustering.clusters.values().filter(move |c| {
             self.filter.iter().all(|f| match f {
-                ClusteringFilter::None() => true,
-                ClusteringFilter::NotTree() => {
+                ClusteringFilter::None => true,
+                ClusteringFilter::NotTree => {
                     let n = c.size();
                     let m = g.num_edges_inside(&c.core());
                     m > n - 1
                 }
                 ClusteringFilter::SizeLowerBound(bound) => c.size() >= *bound,
-                ClusteringFilter::OnlyTree() => {
+                ClusteringFilter::OnlyTree => {
                     let n = c.size();
                     let m = g.num_edges_inside(&c.core());
                     m == n - 1
