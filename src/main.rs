@@ -1,5 +1,6 @@
 mod aoc;
 mod base;
+mod belinda;
 mod ds;
 mod dump;
 mod generators;
@@ -11,6 +12,7 @@ mod utils;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufWriter};
+use std::rc::Rc;
 use std::time::Instant;
 use std::{io::BufReader, path::PathBuf};
 
@@ -21,9 +23,10 @@ use inc_stats::Percentiles;
 use io::{CandidateSpecifier, FilesSpecifier};
 use itertools::Itertools;
 use shadow_rs::shadow;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::aoc::{augment_clusters_from_cli_config, LegacyExpandStrategy, LocalExpandStrategy};
+use crate::belinda::{EnrichedGraph, RichClustering};
 use crate::ds::calculate_statistics;
 use crate::dump::dump_graph_to_json;
 use crate::misc::{NodeList, OwnedSubset, UniverseSet};
@@ -163,6 +166,15 @@ enum SubCommand {
         /// Resolution
         #[clap(short, long, default_value_t = 1.0)]
         resolution: f64,
+    },
+
+    Belinda {
+        /// Path to the edgelist graph
+        #[clap(short, long)]
+        graph: PathBuf,
+        /// Path to the clustering file
+        #[clap(short, long)]
+        clustering: PathBuf,
     },
 }
 
@@ -442,6 +454,21 @@ fn main() -> anyhow::Result<()> {
             let config = serde_json::from_reader(File::open(config)?)?;
             let stats = calculate_statistics(config, &clusters, resolution, &graph)?;
             serde_json::to_writer_pretty(File::create(output)?, &stats)?;
+        }
+        SubCommand::Belinda { graph, clustering } => {
+            let graph = EnrichedGraph::from_graph(Graph::parse_from_file(&graph)?);
+            let mut clustering = Clustering::parse_from_file(&graph.graph, &clustering, false)?;
+            debug!("loaded raw data");
+            let graph = Rc::new(graph);
+            let r_clus = Rc::new(RichClustering::<true>::pack_from_clustering(
+                graph.clone(),
+                clustering,
+            ));
+            debug!("packed data");
+            let u = RichClustering::<true>::universe_handle(r_clus);
+            debug!("created universe");
+            println!("{:?}", u.stats());
+            debug!("printed stats");
         }
     }
     info!("AOC finished in {:?}", starting.elapsed());
