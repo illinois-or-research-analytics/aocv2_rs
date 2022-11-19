@@ -3,7 +3,9 @@ use std::{
     rc::Rc,
 };
 
+use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
+use rayon::prelude::{FromParallelIterator, IntoParallelIterator, ParallelIterator};
 use roaring::{MultiOps, RoaringBitmap, RoaringTreemap};
 
 use crate::{Clustering, DefaultGraph};
@@ -107,19 +109,25 @@ impl<const O: bool> RichClustering<O> {
     }
 
     pub fn pack_from_clustering(graph: Rc<EnrichedGraph>, clus: Clustering) -> RichClustering<O> {
-        let mut clusters = BTreeMap::new();
-        for (i, c) in clus.clusters.into_iter() {
-            let buf = &c
-                .core_nodes
-                .iter()
-                .cloned()
-                .map(|it| it as u32)
-                .collect_vec();
-            let c = RichCluster::load_from_slice(&graph.graph, buf);
-            clusters.insert(i as u64, c);
-        }
+        let k = clus.clusters.len();
+        let raw_graph = &graph.graph;
+        let mut clusters = BTreeMap::from_par_iter(clus.clusters.into_par_iter()
+            .progress_count(k as u64)
+            .map(|(k, c)| {
+            (
+                k as u64,
+                RichCluster::load_from_slice(
+                    raw_graph,
+                    &&c.core_nodes
+                        .iter()
+                        .cloned()
+                        .map(|it| it as u32)
+                        .collect_vec(),
+                ),
+            )
+        }));
         RichClustering {
-            graph: graph,
+            graph,
             clusters,
             source: ClusteringSource::Unknown,
         }
