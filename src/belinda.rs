@@ -5,8 +5,9 @@ use std::{
 
 use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
-use rayon::prelude::{FromParallelIterator, IntoParallelIterator, ParallelIterator};
+use rayon::prelude::{FromParallelIterator, IntoParallelIterator, ParallelIterator, IntoParallelRefIterator};
 use roaring::{MultiOps, RoaringBitmap, RoaringTreemap};
+use tracing::debug;
 
 use crate::{Clustering, DefaultGraph};
 
@@ -149,27 +150,45 @@ impl ClusteringHandle<true> {
             .filter(|(k, v)| self.cluster_ids.contains(k))
             .map(|(k, v)| v)
             .collect_vec();
+        let k = scoped_clusters.len();
         let covered_nodes = scoped_clusters
             .iter()
             .map(|c| &c.nodes)
             .cloned()
             .collect_vec();
         let covered_nodes = covered_nodes.union().len() as u32;
-        let mut covered_edges = RoaringTreemap::new();
+        debug!("covered nodes: {}", covered_nodes);
+        // let mut covered_edges = RoaringTreemap::new();
         let graph = &self.graph.graph;
         let acc = &self.graph.acc_num_edges;
-        for c in scoped_clusters.iter().cloned() {
-            for u in c.nodes.iter() {
-                let edges = &graph.nodes[u as usize].edges;
-                let shift = acc[u as usize];
-                for (offset, &v) in edges.into_iter().enumerate() {
-                    if c.nodes.contains(v as u32) {
-                        covered_edges.insert(shift + offset as u64);
-                    }
-                }
-            }
-        }
-        let covered_edges = covered_edges.len() as u64;
+        let unioned_edges : Vec<RoaringTreemap> = scoped_clusters.par_iter().progress_count(k as u64).map(|c| {
+            let tm = RoaringTreemap::from_sorted_iter(
+                c.nodes.iter().flat_map(|u| {
+                    let edges = &graph.nodes[u as usize].edges;
+                    let shift = acc[u as usize];
+                    edges.into_iter().enumerate().filter_map(move |(offset, &v)| {
+                        if c.nodes.contains(v as u32) {
+                            Some(shift + offset as u64)
+                        } else {
+                            None
+                        }
+                    })
+                })
+            ).unwrap();
+            tm
+        }).collect();
+        let covered_edges = unioned_edges.union().len() as u64;
+            // for u in c.nodes.iter() {
+            //     let edges = &graph.nodes[u as usize].edges;
+            //     let shift = acc[u as usize];
+            //     for (offset, &v) in edges.into_iter().enumerate() {
+            //         if c.nodes.contains(v as u32) {
+            //             covered_edges.insert(shift + offset as u64);
+            //         }
+            //     }
+            // }
+        
+        // let covered_edges = covered_edges.len() as u64;
         GraphStats {
             covered_nodes,
             covered_edges,
