@@ -457,7 +457,7 @@ fn main() -> anyhow::Result<()> {
         }
         SubCommand::Belinda { graph, clustering } => {
             let graph = EnrichedGraph::from_graph(Graph::parse_from_file(&graph)?);
-            let mut clustering = Clustering::parse_from_file(&graph.graph, &clustering, false)?;
+            let clustering = Clustering::parse_from_file(&graph.graph, &clustering, false)?;
             debug!("loaded raw data");
             let graph = Rc::new(graph);
             let r_clus = Rc::new(RichClustering::<true>::pack_from_clustering(

@@ -29,7 +29,7 @@ pub struct EnrichedGraph {
 impl EnrichedGraph {
     pub fn from_graph(graph: DefaultGraph) -> EnrichedGraph {
         let mut acc = vec![0u64; graph.n() + 1];
-        for i in 0..=graph.n() {
+        for i in 0..graph.n() {
             acc[i + 1] = acc[i] + graph.nodes[i].degree() as u64;
         }
         EnrichedGraph {
