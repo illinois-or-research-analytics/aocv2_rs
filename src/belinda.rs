@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    rc::Rc,
+    rc::Rc, sync::Arc,
 };
 
 use ahash::AHashMap;
@@ -108,19 +108,19 @@ impl RichCluster {
 }
 
 pub struct RichClustering<const O: bool> {
-    pub graph: Rc<EnrichedGraph>,
+    pub graph: Arc<EnrichedGraph>,
     pub clusters: BTreeMap<u64, RichCluster>,
     pub source: ClusteringSource,
 }
 
 pub struct ClusteringHandle<const O: bool> {
-    pub graph: Rc<EnrichedGraph>,
-    pub clustering: Rc<RichClustering<O>>,
+    pub graph: Arc<EnrichedGraph>,
+    pub clustering: Arc<RichClustering<O>>,
     pub cluster_ids: BTreeSet<u64>,
 }
 
 impl<const O: bool> RichClustering<O> {
-    pub fn universe_handle(clus: Rc<RichClustering<O>>) -> ClusteringHandle<O> {
+    pub fn universe_handle(clus: Arc<RichClustering<O>>) -> ClusteringHandle<O> {
         ClusteringHandle {
             graph: clus.graph.clone(),
             clustering: clus.clone(),
@@ -128,7 +128,7 @@ impl<const O: bool> RichClustering<O> {
         }
     }
 
-    pub fn pack_from_clustering(graph: Rc<EnrichedGraph>, clus: Clustering) -> RichClustering<O> {
+    pub fn pack_from_clustering(graph: Arc<EnrichedGraph>, clus: Clustering) -> RichClustering<O> {
         let k = clus.clusters.len();
         let raw_graph = &graph.graph;
         let mut clusters =
