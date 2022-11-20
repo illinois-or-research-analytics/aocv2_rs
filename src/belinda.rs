@@ -3,19 +3,38 @@ use std::{
     rc::Rc,
 };
 
+use ahash::AHashMap;
 use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
-use rayon::prelude::{FromParallelIterator, IntoParallelIterator, ParallelIterator, IntoParallelRefIterator};
+use rayon::prelude::{
+    FromParallelIterator, IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
+    ParallelIterator,
+};
 use roaring::{MultiOps, RoaringBitmap, RoaringTreemap};
 use tracing::debug;
 
-use crate::{Clustering, DefaultGraph};
+use crate::{
+    quality::DistributionSummary,
+    utils::{calc_cpm_resolution, calc_modularity_resolution, choose2},
+    Clustering, DefaultGraph,
+};
 
 #[derive(Debug, Clone)]
 pub enum ClusteringSource {
     Unknown,
     Cpm(f64),
     Modularity(f64),
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+pub enum StatisticsType {
+    Mcd,
+    Cpm,
+    Size,
+    Modularity,
+    Conductance,
+    DeviationTreeness,
+    Density,
 }
 
 impl Default for ClusteringSource {
@@ -112,21 +131,22 @@ impl<const O: bool> RichClustering<O> {
     pub fn pack_from_clustering(graph: Rc<EnrichedGraph>, clus: Clustering) -> RichClustering<O> {
         let k = clus.clusters.len();
         let raw_graph = &graph.graph;
-        let mut clusters = BTreeMap::from_par_iter(clus.clusters.into_par_iter()
-            .progress_count(k as u64)
-            .map(|(k, c)| {
-            (
-                k as u64,
-                RichCluster::load_from_slice(
-                    raw_graph,
-                    &&c.core_nodes
-                        .iter()
-                        .cloned()
-                        .map(|it| it as u32)
-                        .collect_vec(),
-                ),
-            )
-        }));
+        let mut clusters =
+            BTreeMap::from_par_iter(clus.clusters.into_par_iter().progress_count(k as u64).map(
+                |(k, c)| {
+                    (
+                        k as u64,
+                        RichCluster::load_from_slice(
+                            raw_graph,
+                            &&c.core_nodes
+                                .iter()
+                                .cloned()
+                                .map(|it| it as u32)
+                                .collect_vec(),
+                        ),
+                    )
+                },
+            ));
         RichClustering {
             graph,
             clusters,
@@ -136,9 +156,39 @@ impl<const O: bool> RichClustering<O> {
 }
 
 #[derive(Debug, Clone)]
+pub struct SummarizedDistribution {
+    pub percentiles: Box<[f64; 21]>,
+}
+
+impl SummarizedDistribution {
+    pub fn minimum(&self) -> f64 {
+        self.percentiles[0]
+    }
+
+    pub fn maximum(&self) -> f64 {
+        self.percentiles[20]
+    }
+
+    pub fn median(&self) -> f64 {
+        self.percentiles[10]
+    }
+}
+
+impl FromIterator<f64> for SummarizedDistribution {
+    fn from_iter<T: IntoIterator<Item = f64>>(iter: T) -> Self {
+        let summary: DistributionSummary<21> = iter.into_iter().collect();
+        let percentiles = summary.values;
+        SummarizedDistribution { percentiles }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct GraphStats {
     covered_nodes: u32,
     covered_edges: u64,
+    total_nodes: u32,
+    total_edges: u64,
+    statistics: AHashMap<StatisticsType, SummarizedDistribution>,
 }
 
 impl ClusteringHandle<true> {
@@ -158,40 +208,82 @@ impl ClusteringHandle<true> {
             .collect_vec();
         let covered_nodes = covered_nodes.union().len() as u32;
         debug!("covered nodes: {}", covered_nodes);
-        // let mut covered_edges = RoaringTreemap::new();
         let graph = &self.graph.graph;
         let acc = &self.graph.acc_num_edges;
-        let unioned_edges : Vec<RoaringTreemap> = scoped_clusters.par_iter().progress_count(k as u64).map(|c| {
-            let tm = RoaringTreemap::from_sorted_iter(
-                c.nodes.iter().flat_map(|u| {
+        let unioned_edges: Vec<RoaringTreemap> = scoped_clusters
+            .par_iter()
+            .progress_count(k as u64)
+            .map(|c| {
+                let tm = RoaringTreemap::from_sorted_iter(c.nodes.iter().flat_map(|u| {
                     let edges = &graph.nodes[u as usize].edges;
                     let shift = acc[u as usize];
-                    edges.into_iter().enumerate().filter_map(move |(offset, &v)| {
-                        if c.nodes.contains(v as u32) {
-                            Some(shift + offset as u64)
-                        } else {
-                            None
-                        }
-                    })
-                })
-            ).unwrap();
-            tm
-        }).collect();
+                    edges
+                        .into_iter()
+                        .enumerate()
+                        .filter_map(move |(offset, &v)| {
+                            if c.nodes.contains(v as u32) {
+                                Some(shift + offset as u64)
+                            } else {
+                                None
+                            }
+                        })
+                }))
+                .unwrap();
+                tm
+            })
+            .collect();
         let covered_edges = unioned_edges.union().len() as u64;
-            // for u in c.nodes.iter() {
-            //     let edges = &graph.nodes[u as usize].edges;
-            //     let shift = acc[u as usize];
-            //     for (offset, &v) in edges.into_iter().enumerate() {
-            //         if c.nodes.contains(v as u32) {
-            //             covered_edges.insert(shift + offset as u64);
-            //         }
-            //     }
-            // }
-        
-        // let covered_edges = covered_edges.len() as u64;
+        let mut statistics_type = vec![
+            StatisticsType::Mcd,
+            StatisticsType::Size,
+            StatisticsType::Modularity,
+            StatisticsType::DeviationTreeness,
+            StatisticsType::Density,
+        ];
+        let mut cpm_val = 0.0;
+        let mut mod_val = 1.0;
+        match self.clustering.source {
+            ClusteringSource::Unknown => {}
+            ClusteringSource::Cpm(r) => {
+                statistics_type.push(StatisticsType::Cpm);
+                cpm_val = r;
+            }
+            ClusteringSource::Modularity(r) => {
+                mod_val = r;
+            }
+        }
+        let statistics = AHashMap::from_iter(statistics_type.into_iter().map(|t| {
+            (t.clone(), {
+                let c: Vec<f64> = scoped_clusters
+                    .par_iter()
+                    .map(|c| match t.clone() {
+                        StatisticsType::Mcd => c.mcd as f64,
+                        StatisticsType::Cpm => {
+                            calc_cpm_resolution(c.m as usize, c.n as usize, cpm_val)
+                        }
+                        StatisticsType::Size => c.n as f64,
+                        StatisticsType::Modularity => calc_modularity_resolution(
+                            c.m as usize,
+                            (c.m * 2 + c.c) as usize,
+                            graph.m(),
+                            mod_val,
+                        ),
+                        StatisticsType::Conductance => {
+                            c.c as f64 / c.vol.min(c.m * 2 - c.vol) as f64
+                        }
+                        StatisticsType::DeviationTreeness => (c.m - c.n + 1) as f64 / c.n as f64,
+                        StatisticsType::Density => c.m as f64 / choose2(c.n as usize) as f64,
+                    })
+                    .collect();
+                c.into_iter().collect()
+            })
+        }));
         GraphStats {
             covered_nodes,
             covered_edges,
+            total_nodes: graph.n() as u32,
+            total_edges: graph.m() as u64,
+            statistics,
         }
     }
 }
