@@ -132,7 +132,7 @@ impl<const O: bool> RichClustering<O> {
     pub fn pack_from_clustering(graph: Arc<EnrichedGraph>, clus: Clustering) -> RichClustering<O> {
         let k = clus.clusters.len();
         let raw_graph = &graph.graph;
-        let mut clusters =
+        let clusters =
             BTreeMap::from_par_iter(clus.clusters.into_par_iter().progress_count(k as u64).map(
                 |(k, c)| {
                     (
@@ -234,6 +234,7 @@ impl ClusteringHandle<true> {
             })
             .collect();
         let covered_edges = unioned_edges.union().len() as u64;
+        assert_eq!(0, covered_edges % 2);
         let mut statistics_type = vec![
             StatisticsType::Mcd,
             StatisticsType::Size,
@@ -281,7 +282,7 @@ impl ClusteringHandle<true> {
         }));
         GraphStats {
             covered_nodes,
-            covered_edges,
+            covered_edges: covered_edges / 2,
             total_nodes: graph.n() as u32,
             total_edges: graph.m() as u64,
             statistics,
