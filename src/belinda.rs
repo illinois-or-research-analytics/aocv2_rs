@@ -63,12 +63,12 @@ impl EnrichedGraph {
 
 #[derive(Debug, Clone)]
 pub struct RichCluster {
-    nodes: RoaringBitmap,
-    n: u64,
-    m: u64,
-    c: u64,
-    mcd: u64,
-    vol: u64,
+    pub nodes: RoaringBitmap,
+    pub n: u64,
+    pub m: u64,
+    pub c: u64,
+    pub mcd: u64,
+    pub vol: u64,
 }
 
 impl RichCluster {
