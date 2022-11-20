@@ -125,7 +125,7 @@ impl ClusteringHandle<true> {
         let mut dist = vec![];
         for (id, cluster) in &self.clustering.clusters {
             if self.cluster_ids.contains(id) {
-                dist.push(rhs.clusters[id].n as f64 - cluster.n as f64);
+                dist.push((rhs.clusters[id].n as f64 - cluster.n as f64) / cluster.n as f64);
             }
         }
         let cnt = dist.iter().filter(|&&it| it > 0.0).count();
