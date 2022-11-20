@@ -184,11 +184,11 @@ impl FromIterator<f64> for SummarizedDistribution {
 
 #[derive(Debug, Clone)]
 pub struct GraphStats {
-    covered_nodes: u32,
-    covered_edges: u64,
-    total_nodes: u32,
-    total_edges: u64,
-    statistics: AHashMap<StatisticsType, SummarizedDistribution>,
+    pub covered_nodes: u32,
+    pub covered_edges: u64,
+    pub total_nodes: u32,
+    pub total_edges: u64,
+    pub statistics: AHashMap<StatisticsType, SummarizedDistribution>,
 }
 
 impl ClusteringHandle<true> {
