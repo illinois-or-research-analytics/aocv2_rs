@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufWriter};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Instant;
 use std::{io::BufReader, path::PathBuf};
 
@@ -459,8 +460,8 @@ fn main() -> anyhow::Result<()> {
             let graph = EnrichedGraph::from_graph(Graph::parse_from_file(&graph)?);
             let clustering = Clustering::parse_from_file(&graph.graph, &clustering, false)?;
             debug!("loaded raw data");
-            let graph = Rc::new(graph);
-            let r_clus = Rc::new(RichClustering::<true>::pack_from_clustering(
+            let graph = Arc::new(graph);
+            let r_clus = Arc::new(RichClustering::<true>::pack_from_clustering(
                 graph.clone(),
                 clustering,
             ));
