@@ -121,7 +121,8 @@ pub struct ClusteringHandle<const O: bool> {
 }
 
 impl ClusteringHandle<true> {
-    pub fn size_diff(&self, rhs : &RichClustering<true>) -> (u32, SummarizedDistribution) {
+    pub fn size_diff(&self) -> (u32, SummarizedDistribution) {
+        let rhs = self.clustering.as_ref();
         let mut dist = vec![];
         for (id, cluster) in &self.clustering.clusters {
             if self.cluster_ids.contains(id) {
