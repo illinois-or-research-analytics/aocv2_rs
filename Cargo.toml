@@ -33,6 +33,8 @@ shadow-rs = "0.11.0"
 serde_with = "2.0.1"
 comfy-table = "6.1.2"
 roaring = "0.10.1"
+strum_macros = "0.24"
+strum = { version = "0.24", features = ["derive"] }
 
 [build-dependencies]
 shadow-rs = "0.11.0"

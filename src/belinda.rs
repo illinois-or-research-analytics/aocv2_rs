@@ -27,6 +27,7 @@ pub enum ClusteringSource {
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
+#[derive(strum_macros::Display)]
 pub enum StatisticsType {
     Mcd,
     Cpm,
