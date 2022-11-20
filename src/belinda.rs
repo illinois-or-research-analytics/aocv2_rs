@@ -120,6 +120,19 @@ pub struct ClusteringHandle<const O: bool> {
     pub cluster_ids: BTreeSet<u64>,
 }
 
+impl ClusteringHandle<true> {
+    pub fn size_diff(&self, rhs : &RichClustering<true>) -> (u32, SummarizedDistribution) {
+        let mut dist = vec![];
+        for (id, cluster) in &self.clustering.clusters {
+            if self.cluster_ids.contains(id) {
+                dist.push(rhs.clusters[id].n as f64 - cluster.n as f64);
+            }
+        }
+        let cnt = dist.iter().filter(|&&it| it > 0.0).count();
+        (cnt as u32, dist.into_iter().collect())
+    }
+}
+
 impl<const O: bool> RichClustering<O> {
     pub fn universe_handle(clus: Arc<RichClustering<O>>) -> ClusteringHandle<O> {
         ClusteringHandle {
