@@ -185,6 +185,7 @@ impl FromIterator<f64> for SummarizedDistribution {
 
 #[derive(Debug, Clone)]
 pub struct GraphStats {
+    pub num_clusters: u32,
     pub covered_nodes: u32,
     pub covered_edges: u64,
     pub total_nodes: u32,
@@ -281,6 +282,7 @@ impl ClusteringHandle<true> {
             })
         }));
         GraphStats {
+            num_clusters: k as u32,
             covered_nodes,
             covered_edges: covered_edges / 2,
             total_nodes: graph.n() as u32,
