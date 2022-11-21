@@ -118,6 +118,8 @@ pub struct ClusteringHandle<const O: bool> {
     pub graph: Arc<EnrichedGraph>,
     pub clustering: Arc<RichClustering<O>>,
     pub cluster_ids: BTreeSet<u64>,
+    pub covered_nodes : RoaringBitmap,
+    pub node_multiplicity: Vec<u32>,
 }
 
 impl ClusteringHandle<true> {
@@ -133,15 +135,17 @@ impl ClusteringHandle<true> {
     }
 }
 
-impl<const O: bool> RichClustering<O> {
-    pub fn universe_handle(clus: Arc<RichClustering<O>>) -> ClusteringHandle<O> {
-        ClusteringHandle {
-            graph: clus.graph.clone(),
-            clustering: clus.clone(),
-            cluster_ids: clus.clusters.keys().cloned().collect(),
+impl RichClustering<true> {
+    pub fn universe_handle(clus: Arc<RichClustering<true>>) -> ClusteringHandle<true> {
+        let mut cluster_ids = BTreeSet::new();
+        for (id, _) in &clus.clusters {
+            cluster_ids.insert(*id);
         }
+        ClusteringHandle::<true>::new(clus, cluster_ids)
     }
+}
 
+impl<const O: bool> RichClustering<O> {
     pub fn pack_from_clustering(graph: Arc<EnrichedGraph>, clus: Clustering) -> RichClustering<O> {
         let k = clus.clusters.len();
         let raw_graph = &graph.graph;
@@ -207,6 +211,30 @@ pub struct GraphStats {
 }
 
 impl ClusteringHandle<true> {
+    pub fn new(clus: Arc<RichClustering<true>>, cluster_ids: BTreeSet<u64>) -> Self {
+        let covered_nodes : Vec<_> = cluster_ids
+            .iter()
+            .map(|&it| clus.clusters[&it].nodes.clone()).collect();
+        let covered_nodes = covered_nodes.union();
+        let mut node_multiplicity = vec![0u32; clus.graph.graph.n()];
+        for cid in cluster_ids.iter().map(|it| clus.clusters.get(it).unwrap()) {
+            for n in cid.nodes.iter() {
+                node_multiplicity[n as usize] += 1;
+            }
+        }
+        for i in 0..node_multiplicity.len() {
+            if node_multiplicity[i] == 0 {
+                node_multiplicity[i] = 1;
+            }
+        }
+        ClusteringHandle {
+            graph: clus.graph.clone(),
+            clustering: clus,
+            cluster_ids,
+            covered_nodes,
+            node_multiplicity,
+        }
+    }
     pub fn stats(&self) -> GraphStats {
         let scoped_clusters = self
             .clustering
