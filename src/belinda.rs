@@ -244,12 +244,8 @@ impl ClusteringHandle<true> {
             .map(|(k, v)| v)
             .collect_vec();
         let k = scoped_clusters.len();
-        let covered_nodes = scoped_clusters
-            .iter()
-            .map(|c| &c.nodes)
-            .cloned()
-            .collect_vec();
-        let covered_nodes = covered_nodes.union().len() as u32;
+        let covered_nodes = self.covered_nodes.len() as u32;
+        // let covered_nodes = covered_nodes.union().len() as u32;
         debug!("covered nodes: {}", covered_nodes);
         let graph = &self.graph.graph;
         let acc = &self.graph.acc_num_edges;
