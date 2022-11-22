@@ -297,7 +297,7 @@ impl ClusteringHandle<true> {
         let k = scoped_clusters.len();
         let covered_nodes = self.covered_nodes.len() as u32;
         debug!("covered nodes: {}", covered_nodes);
-        let covered_edges = if covered_nodes as u64 <= clusters.values().map(|it| it.nodes.len()).sum::<u64>() {
+        let covered_edges = if covered_nodes as u64 >= clusters.values().map(|it| it.nodes.len()).sum::<u64>() {
             clusters.values().map(|it| it.m).sum()
         } else {
             let acc = &self.graph.acc_num_edges;
