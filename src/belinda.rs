@@ -9,7 +9,7 @@ use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use rayon::prelude::{
     FromParallelIterator, IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
-    ParallelIterator,
+    ParallelBridge, ParallelIterator,
 };
 use roaring::{MultiOps, RoaringBitmap, RoaringTreemap};
 use tracing::debug;
@@ -112,7 +112,7 @@ pub struct RichClustering<const O: bool> {
     pub graph: Arc<EnrichedGraph>,
     pub clusters: BTreeMap<u64, RichCluster>,
     pub source: ClusteringSource,
-    pub node_covers : Vec<RoaringBitmap>,
+    pub node_covers: Vec<RoaringBitmap>,
 }
 
 pub struct ClusteringHandle<const O: bool> {
@@ -245,43 +245,29 @@ impl ClusteringHandle<true> {
         }
     }
     pub fn stats(&self) -> GraphStats {
+        let clusters = &self.clustering.clusters;
+        let graph = &self.graph.graph;
+        let labels = &self.clustering.node_covers;
+        let clusters_map: RoaringBitmap = self.cluster_ids.iter().map(|it| *it as u32).collect();
         let scoped_clusters = self
-            .clustering
-            .clusters
+            .cluster_ids
             .iter()
-            .filter(|(k, v)| self.cluster_ids.contains(k))
-            .map(|(k, v)| v)
+            .map(|k| clusters.get(k).unwrap())
             .collect_vec();
         let k = scoped_clusters.len();
         let covered_nodes = self.covered_nodes.len() as u32;
-        // let covered_nodes = covered_nodes.union().len() as u32;
         debug!("covered nodes: {}", covered_nodes);
-        let graph = &self.graph.graph;
-        let acc = &self.graph.acc_num_edges;
-        let unioned_edges: Vec<RoaringTreemap> = scoped_clusters
-            .par_iter()
-            .progress_count(k as u64)
-            .map(|c| {
-                let tm = RoaringTreemap::from_sorted_iter(c.nodes.iter().flat_map(|u| {
-                    let edges = &graph.nodes[u as usize].edges;
-                    let shift = acc[u as usize];
-                    edges
-                        .into_iter()
-                        .enumerate()
-                        .filter_map(move |(offset, &v)| {
-                            if c.nodes.contains(v as u32) {
-                                Some(shift + offset as u64)
-                            } else {
-                                None
-                            }
-                        })
-                }))
-                .unwrap();
-                tm
+        // let acc = &graph.acc_num_edges;
+        let covered_edges = graph
+            .each_edge()
+            .par_bridge()
+            .progress_count(graph.m() as u64)
+            .filter(|(u, v)| {
+                let (u, v) = (*u, *v);
+                let valid_labels = &labels[u] & &labels[v] & &clusters_map;
+                !valid_labels.is_empty()
             })
-            .collect();
-        let covered_edges = unioned_edges.union().len() as u64;
-        assert_eq!(0, covered_edges % 2);
+            .count();
         let mut statistics_type = vec![
             StatisticsType::Mcd,
             StatisticsType::Size,
@@ -330,7 +316,7 @@ impl ClusteringHandle<true> {
         GraphStats {
             num_clusters: k as u32,
             covered_nodes,
-            covered_edges: covered_edges / 2,
+            covered_edges: covered_edges as u64,
             total_nodes: graph.n() as u32,
             total_edges: graph.m() as u64,
             statistics,

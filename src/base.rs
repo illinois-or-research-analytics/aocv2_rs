@@ -360,6 +360,19 @@ impl Graph<Node> {
             })
     }
 
+    pub fn each_edge<'a>(&'a self) -> impl Iterator<Item = (usize, usize)> + 'a {
+        self.nodes.iter().flat_map(|it| {
+            it.edges.iter().filter_map(|e| {
+                let (u, v) = (it.id, *e);
+                if u < v {
+                    Some((u, v))
+                } else {
+                    None
+                }
+            })
+        })
+    }
+
     pub fn degrees_inside<'a, X>(&'a self, view: &'a X) -> impl Iterator<Item = usize> + 'a
     where
         X: AbstractSubset<'a>,
