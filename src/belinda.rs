@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    rc::Rc, sync::Arc,
+    rc::Rc,
+    sync::Arc,
 };
 
 use ahash::AHashMap;
@@ -26,8 +27,7 @@ pub enum ClusteringSource {
     Modularity(f64),
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, Eq)]
-#[derive(strum_macros::Display)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq, strum_macros::Display)]
 pub enum StatisticsType {
     Mcd,
     Cpm,
@@ -112,18 +112,19 @@ pub struct RichClustering<const O: bool> {
     pub graph: Arc<EnrichedGraph>,
     pub clusters: BTreeMap<u64, RichCluster>,
     pub source: ClusteringSource,
+    pub node_covers : Vec<RoaringBitmap>,
 }
 
 pub struct ClusteringHandle<const O: bool> {
     pub graph: Arc<EnrichedGraph>,
     pub clustering: Arc<RichClustering<O>>,
     pub cluster_ids: BTreeSet<u64>,
-    pub covered_nodes : RoaringBitmap,
+    pub covered_nodes: RoaringBitmap,
     pub node_multiplicity: Vec<u32>,
 }
 
 impl ClusteringHandle<true> {
-    pub fn size_diff(&self, rhs : &RichClustering<true>) -> (u32, SummarizedDistribution) {
+    pub fn size_diff(&self, rhs: &RichClustering<true>) -> (u32, SummarizedDistribution) {
         let mut dist = vec![];
         for (id, cluster) in &self.clustering.clusters {
             if self.cluster_ids.contains(id) {
@@ -165,10 +166,17 @@ impl<const O: bool> RichClustering<O> {
                     )
                 },
             ));
+        let mut node_covers = vec![RoaringBitmap::new(); graph.graph.n()];
+        for (cid, k) in clusters.iter() {
+            for n in k.nodes.iter() {
+                node_covers[n as usize].insert(*cid as u32);
+            }
+        }
         RichClustering {
             graph,
             clusters,
             source: ClusteringSource::Unknown,
+            node_covers,
         }
     }
 }
@@ -212,9 +220,10 @@ pub struct GraphStats {
 
 impl ClusteringHandle<true> {
     pub fn new(clus: Arc<RichClustering<true>>, cluster_ids: BTreeSet<u64>) -> Self {
-        let covered_nodes : Vec<_> = cluster_ids
+        let covered_nodes: Vec<_> = cluster_ids
             .iter()
-            .map(|&it| clus.clusters[&it].nodes.clone()).collect();
+            .map(|&it| clus.clusters[&it].nodes.clone())
+            .collect();
         let covered_nodes = covered_nodes.union();
         let mut node_multiplicity = vec![0u32; clus.graph.graph.n()];
         for cid in cluster_ids.iter().map(|it| clus.clusters.get(it).unwrap()) {

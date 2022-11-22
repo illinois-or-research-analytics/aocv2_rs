@@ -7,8 +7,8 @@ use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use nom::{branch::alt, sequence::tuple, Parser};
 use priority_queue::PriorityQueue;
-use rayon::prelude::*;
 pub use rayon;
+use rayon::prelude::*;
 use std::cmp::Reverse;
 use tracing::debug;
 
