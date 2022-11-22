@@ -1,12 +1,12 @@
 //! Data science utilities. I don't have to write anything cleanly at this point
-use core::num;
+
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use itertools::Itertools;
-use rayon::prelude::FromParallelIterator;
+
 use rayon::prelude::IntoParallelRefIterator;
-use rayon::prelude::ParallelBridge;
+
 use rayon::prelude::ParallelIterator;
 use serde::Deserialize;
 use serde::Serialize;
@@ -21,7 +21,7 @@ use crate::Cluster;
 use crate::Clustering;
 use crate::DefaultGraph;
 
-#[derive(Hash, PartialEq, Serialize, Deserialize, Clone)]
+#[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub enum ClusteringFilter {
     None,
     NotTree,
@@ -144,7 +144,7 @@ pub fn calculate_statistics(
         BTreeMap::<String, Vec<(Vec<ClusteringFilter>, VerboseGlobalStatistics<5>)>>::new();
     for (filepath, label) in files_and_labels(files) {
         debug!("Processing {}", filepath);
-        let label = label.unwrap_or_else(|| &filepath);
+        let label = label.unwrap_or(&filepath);
         let clus = Clustering::parse_from_file(g, &filepath, false)?;
         let stats = configs
             .par_iter()

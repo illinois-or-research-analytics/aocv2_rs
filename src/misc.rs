@@ -2,7 +2,7 @@ use std::io::BufRead;
 
 use ahash::AHashSet;
 
-use crate::{AbstractSubset, Cluster, DefaultGraph, Graph, Node};
+use crate::{AbstractSubset, Cluster, DefaultGraph, Node};
 
 /// A wrapper to a list of node ids, designed for easy construction
 /// from files. The node ids stored internally are internal ids mapped from the original ids.

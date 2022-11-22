@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
-    rc::Rc,
     sync::Arc,
 };
 
@@ -9,15 +8,14 @@ use ahash::AHashMap;
 use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use rayon::prelude::{
-    FromParallelIterator, IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
-    ParallelBridge, ParallelIterator,
+    FromParallelIterator, IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use roaring::{MultiOps, RoaringBitmap, RoaringTreemap};
 use tracing::debug;
 
 use crate::{
     quality::DistributionSummary,
-    utils::{calc_cpm_resolution, calc_modularity_resolution, choose2, self},
+    utils::{self, calc_cpm_resolution, calc_modularity_resolution, choose2},
     Clustering, DefaultGraph, PackedClustering,
 };
 
@@ -160,21 +158,13 @@ impl<const O: bool> RichClustering<O> {
         let path = PathBuf::new().join(p);
         let raw_graph = &graph.graph;
         if path.extension().unwrap() == "lz4" {
-            let clus : PackedClustering = utils::read_compressed_bincode(&path)?;
+            let clus: PackedClustering = utils::read_compressed_bincode(&path)?;
             let k = clus.clusters.len();
             let clusters = BTreeMap::from_par_iter(
                 clus.clusters
                     .into_par_iter()
                     .progress_count(k as u64)
-                    .map(|(k, c)| {
-                        (
-                            k as u64,
-                            RichCluster::load_from_bitmap(
-                                raw_graph,
-                                c,
-                            ),
-                        )
-                    }),
+                    .map(|(k, c)| (k as u64, RichCluster::load_from_bitmap(raw_graph, c))),
             );
             let mut node_covers = vec![RoaringBitmap::new(); graph.graph.n()];
             for (cid, k) in clusters.iter() {
@@ -189,7 +179,10 @@ impl<const O: bool> RichClustering<O> {
                 node_covers,
             })
         } else {
-            Ok(Self::pack_from_clustering(graph.clone(), Clustering::parse_from_file(raw_graph, &path, false)?))
+            Ok(Self::pack_from_clustering(
+                graph.clone(),
+                Clustering::parse_from_file(raw_graph, &path, false)?,
+            ))
         }
     }
 
@@ -203,7 +196,7 @@ impl<const O: bool> RichClustering<O> {
                         k as u64,
                         RichCluster::load_from_slice(
                             raw_graph,
-                            &&c.core_nodes
+                            &c.core_nodes
                                 .iter()
                                 .cloned()
                                 .map(|it| it as u32)
@@ -293,8 +286,8 @@ impl ClusteringHandle<true> {
     pub fn stats(&self) -> GraphStats {
         let clusters = &self.clustering.clusters;
         let graph = &self.graph.graph;
-        let labels = &self.clustering.node_covers;
-        let clusters_map: RoaringBitmap = self.cluster_ids.iter().map(|it| *it as u32).collect();
+        let _labels = &self.clustering.node_covers;
+        let _clusters_map: RoaringBitmap = self.cluster_ids.iter().map(|it| *it as u32).collect();
         let scoped_clusters = self
             .cluster_ids
             .iter()
@@ -305,28 +298,28 @@ impl ClusteringHandle<true> {
         debug!("covered nodes: {}", covered_nodes);
         let acc = &self.graph.acc_num_edges;
         let unioned_edges: Vec<RoaringTreemap> = scoped_clusters
-        .par_iter()
-        .progress_count(k as u64)
-        .map(|c| {
-            let tm = RoaringTreemap::from_sorted_iter(c.nodes.iter().flat_map(|u| {
-                let edges = &graph.nodes[u as usize].edges;
-                let shift = acc[u as usize];
-                edges
-                    .into_iter()
-                    .enumerate()
-                    .filter_map(move |(offset, &v)| {
-                        if c.nodes.contains(v as u32) {
-                            Some(shift + offset as u64)
-                        } else {
-                            None
-                        }
-                    })
-            }))
-            .unwrap();
-            tm
-        })
-        .collect();
-    let covered_edges = unioned_edges.union().len() as u64;
+            .par_iter()
+            .progress_count(k as u64)
+            .map(|c| {
+                let tm = RoaringTreemap::from_sorted_iter(c.nodes.iter().flat_map(|u| {
+                    let edges = &graph.nodes[u as usize].edges;
+                    let shift = acc[u as usize];
+                    edges
+                        .iter()
+                        .enumerate()
+                        .filter_map(move |(offset, &v)| {
+                            if c.nodes.contains(v as u32) {
+                                Some(shift + offset as u64)
+                            } else {
+                                None
+                            }
+                        })
+                }))
+                .unwrap();
+                tm
+            })
+            .collect();
+        let covered_edges = (unioned_edges.union().len() / 2) as u64;
         let mut statistics_type = vec![
             StatisticsType::Mcd,
             StatisticsType::Size,

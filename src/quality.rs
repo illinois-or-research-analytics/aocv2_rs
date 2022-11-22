@@ -11,7 +11,7 @@ use serde::Serialize;
 use serde_with::serde_as;
 
 use crate::aoc::AocConfig;
-use crate::base::Graph;
+
 use crate::io::FilesSpecifier;
 use crate::utils::calc_cpm_resolution;
 use crate::utils::calc_modularity;
@@ -20,7 +20,7 @@ use crate::DefaultGraph;
 
 use crate::utils::calc_modularity_resolution;
 use crate::Clustering;
-use crate::Node;
+
 pub fn modularity<'a, X>(g: &'a DefaultGraph, c: &'a X) -> f64
 where
     X: AbstractSubset<'a>,

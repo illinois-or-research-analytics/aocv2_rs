@@ -459,7 +459,7 @@ fn main() -> anyhow::Result<()> {
             graph,
             clusters,
             config,
-            legacy_cid_nid_order,
+            legacy_cid_nid_order: _,
             output,
             resolution,
         } => {
@@ -474,7 +474,7 @@ fn main() -> anyhow::Result<()> {
             debug!("loaded raw data");
             let graph = Arc::new(graph);
             let r_clus = Arc::new(RichClustering::<true>::pack_from_clustering(
-                graph.clone(),
+                graph,
                 clustering,
             ));
             debug!("packed data");

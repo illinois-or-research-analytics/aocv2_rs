@@ -456,8 +456,8 @@ impl Graph<Node> {
             .each_node_id()
             .map(|&n| self.nodes[n].degree())
             .sum::<usize>();
-        let modularity = utils::calc_modularity_resolution(ls, ds, total_l, resolution);
-        modularity
+        
+        utils::calc_modularity_resolution(ls, ds, total_l, resolution)
     }
 
     pub fn treeness_of<'a, X>(&'a self, view: &'a X) -> f64
@@ -466,7 +466,7 @@ impl Graph<Node> {
     {
         let m = self.num_edges_inside(view) as f64;
         let n = view.num_nodes() as f64;
-        return (m - n + 1.0) / n;
+        (m - n + 1.0) / n
     }
 
     /// The minimum intra-cluster degree of a subset `X`
@@ -644,7 +644,8 @@ impl From<Clustering> for PackedClustering {
         let mut clusters = BTreeMap::new();
         for (cluster_id, cluster) in clustering.clusters {
             let bitmap = cluster
-                .all().each_node_id()
+                .all()
+                .each_node_id()
                 .map(|it| *it as u32)
                 .collect::<RoaringBitmap>();
             clusters.insert(cluster_id, bitmap);

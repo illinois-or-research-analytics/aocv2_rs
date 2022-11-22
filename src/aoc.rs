@@ -1,7 +1,7 @@
 use crate::misc::OnlineConductance;
 use crate::utils::{choose2, NeighborhoodFilter};
 use crate::{io::*, AbstractSubset, DefaultGraph};
-use crate::{utils, Cluster, Clustering, Graph, Node};
+use crate::{utils, Cluster, Clustering, Node};
 use ahash::AHashMap;
 use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
