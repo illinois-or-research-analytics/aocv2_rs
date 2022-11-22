@@ -456,7 +456,7 @@ impl Graph<Node> {
             .each_node_id()
             .map(|&n| self.nodes[n].degree())
             .sum::<usize>();
-        
+
         utils::calc_modularity_resolution(ls, ds, total_l, resolution)
     }
 

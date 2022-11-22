@@ -474,8 +474,7 @@ fn main() -> anyhow::Result<()> {
             debug!("loaded raw data");
             let graph = Arc::new(graph);
             let r_clus = Arc::new(RichClustering::<true>::pack_from_clustering(
-                graph,
-                clustering,
+                graph, clustering,
             ));
             debug!("packed data");
             let u = RichClustering::<true>::universe_handle(r_clus);

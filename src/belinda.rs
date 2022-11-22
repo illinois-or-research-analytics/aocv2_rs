@@ -8,7 +8,8 @@ use ahash::AHashMap;
 use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use rayon::prelude::{
-    FromParallelIterator, IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+    FromParallelIterator, IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
+    ParallelIterator,
 };
 use roaring::{MultiOps, RoaringBitmap, RoaringTreemap};
 use tracing::debug;
@@ -296,30 +297,32 @@ impl ClusteringHandle<true> {
         let k = scoped_clusters.len();
         let covered_nodes = self.covered_nodes.len() as u32;
         debug!("covered nodes: {}", covered_nodes);
-        let acc = &self.graph.acc_num_edges;
-        let unioned_edges: Vec<RoaringTreemap> = scoped_clusters
-            .par_iter()
-            .progress_count(k as u64)
-            .map(|c| {
-                let tm = RoaringTreemap::from_sorted_iter(c.nodes.iter().flat_map(|u| {
-                    let edges = &graph.nodes[u as usize].edges;
-                    let shift = acc[u as usize];
-                    edges
-                        .iter()
-                        .enumerate()
-                        .filter_map(move |(offset, &v)| {
+        let covered_edges = if covered_nodes <= clusters.values().map(|it| it.nodes.len()).sum() {
+            clusters.values().map(|it| it.m).sum()
+        } else {
+            let acc = &self.graph.acc_num_edges;
+            let unioned_edges: Vec<RoaringTreemap> = scoped_clusters
+                .par_iter()
+                .progress_count(k as u64)
+                .map(|c| {
+                    let tm = RoaringTreemap::from_sorted_iter(c.nodes.iter().flat_map(|u| {
+                        let edges = &graph.nodes[u as usize].edges;
+                        let shift = acc[u as usize];
+                        edges.iter().enumerate().filter_map(move |(offset, &v)| {
                             if c.nodes.contains(v as u32) {
                                 Some(shift + offset as u64)
                             } else {
                                 None
                             }
                         })
-                }))
-                .unwrap();
-                tm
-            })
-            .collect();
-        let covered_edges = (unioned_edges.union().len() / 2) as u64;
+                    }))
+                    .unwrap();
+                    tm
+                })
+                .collect();
+            (unioned_edges.union().len() / 2) as u64
+        };
+
         let mut statistics_type = vec![
             StatisticsType::Mcd,
             StatisticsType::Size,
