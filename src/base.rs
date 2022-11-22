@@ -644,9 +644,8 @@ impl From<Clustering> for PackedClustering {
         let mut clusters = BTreeMap::new();
         for (cluster_id, cluster) in clustering.clusters {
             let bitmap = cluster
-                .core_nodes
-                .into_iter()
-                .map(|it| it as u32)
+                .all().each_node_id()
+                .map(|it| *it as u32)
                 .collect::<RoaringBitmap>();
             clusters.insert(cluster_id, bitmap);
         }

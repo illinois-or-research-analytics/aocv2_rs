@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
     rc::Rc,
     sync::Arc,
 };
@@ -16,8 +17,8 @@ use tracing::debug;
 
 use crate::{
     quality::DistributionSummary,
-    utils::{calc_cpm_resolution, calc_modularity_resolution, choose2},
-    Clustering, DefaultGraph,
+    utils::{calc_cpm_resolution, calc_modularity_resolution, choose2, self},
+    Clustering, DefaultGraph, PackedClustering,
 };
 
 #[derive(Debug, Clone)]
@@ -73,28 +74,29 @@ pub struct RichCluster {
 }
 
 impl RichCluster {
-    pub fn load_from_slice(g: &DefaultGraph, nodes: &[u32]) -> RichCluster {
+    pub fn load_from_bitmap(g: &DefaultGraph, nodes: RoaringBitmap) -> Self {
         let n = nodes.len() as u64;
-        let nodeset: RoaringBitmap = nodes.iter().cloned().map(|it| it as u32).collect();
+        let nodeset: RoaringBitmap = nodes;
         let mut m = 0;
         let mut c = 0;
         let mut vol = 0;
-        let mut mcd = 0;
+        let mut mcd = (g.m() + 1) as u64;
         for u in &nodeset {
             let adj = &g.nodes[u as usize].edges;
             vol += adj.len() as u64;
-            if mcd == 0 && adj.len() > 0 {
-                mcd = adj.len() as u64;
-            } else {
-                mcd = mcd.min(adj.len() as u64);
-            }
+            let mut inside_connectivity = 0;
             for &v in adj {
                 if nodeset.contains(v as u32) {
                     m += 1;
+                    inside_connectivity += 1;
                 } else {
                     c += 1;
                 }
             }
+            mcd = mcd.min(inside_connectivity);
+        }
+        if mcd == (g.m() + 1) as u64 {
+            mcd = 0;
         }
         m /= 2;
         RichCluster {
@@ -105,6 +107,10 @@ impl RichCluster {
             mcd,
             vol,
         }
+    }
+    pub fn load_from_slice(g: &DefaultGraph, nodes: &[u32]) -> RichCluster {
+        let nodeset: RoaringBitmap = nodes.iter().copied().collect();
+        RichCluster::load_from_bitmap(g, nodeset)
     }
 }
 
@@ -147,6 +153,46 @@ impl RichClustering<true> {
 }
 
 impl<const O: bool> RichClustering<O> {
+    pub fn pack_from_file<P>(graph: Arc<EnrichedGraph>, p: P) -> anyhow::Result<Self>
+    where
+        P: AsRef<std::path::Path>,
+    {
+        let path = PathBuf::new().join(p);
+        let raw_graph = &graph.graph;
+        if path.extension().unwrap() == "lz4" {
+            let clus : PackedClustering = utils::read_compressed_bincode(&path)?;
+            let k = clus.clusters.len();
+            let clusters = BTreeMap::from_par_iter(
+                clus.clusters
+                    .into_par_iter()
+                    .progress_count(k as u64)
+                    .map(|(k, c)| {
+                        (
+                            k as u64,
+                            RichCluster::load_from_bitmap(
+                                raw_graph,
+                                c,
+                            ),
+                        )
+                    }),
+            );
+            let mut node_covers = vec![RoaringBitmap::new(); graph.graph.n()];
+            for (cid, k) in clusters.iter() {
+                for n in k.nodes.iter() {
+                    node_covers[n as usize].insert(*cid as u32);
+                }
+            }
+            Ok(RichClustering {
+                graph,
+                clusters,
+                source: ClusteringSource::Unknown,
+                node_covers,
+            })
+        } else {
+            Ok(Self::pack_from_clustering(graph.clone(), Clustering::parse_from_file(raw_graph, &path, false)?))
+        }
+    }
+
     pub fn pack_from_clustering(graph: Arc<EnrichedGraph>, clus: Clustering) -> RichClustering<O> {
         let k = clus.clusters.len();
         let raw_graph = &graph.graph;
