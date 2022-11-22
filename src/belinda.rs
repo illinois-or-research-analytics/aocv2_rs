@@ -303,16 +303,30 @@ impl ClusteringHandle<true> {
         let k = scoped_clusters.len();
         let covered_nodes = self.covered_nodes.len() as u32;
         debug!("covered nodes: {}", covered_nodes);
-        let covered_edges = graph
-            .each_edge()
-            .par_bridge()
-            .progress_count(graph.m() as u64)
-            .filter(|(u, v)| {
-                let (u, v) = (*u, *v);
-                let valid_labels = &labels[u] & &labels[v] & &clusters_map;
-                !valid_labels.is_empty()
-            })
-            .count();
+        let acc = &self.graph.acc_num_edges;
+        let unioned_edges: Vec<RoaringTreemap> = scoped_clusters
+        .par_iter()
+        .progress_count(k as u64)
+        .map(|c| {
+            let tm = RoaringTreemap::from_sorted_iter(c.nodes.iter().flat_map(|u| {
+                let edges = &graph.nodes[u as usize].edges;
+                let shift = acc[u as usize];
+                edges
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(move |(offset, &v)| {
+                        if c.nodes.contains(v as u32) {
+                            Some(shift + offset as u64)
+                        } else {
+                            None
+                        }
+                    })
+            }))
+            .unwrap();
+            tm
+        })
+        .collect();
+    let covered_edges = unioned_edges.union().len() as u64;
         let mut statistics_type = vec![
             StatisticsType::Mcd,
             StatisticsType::Size,
