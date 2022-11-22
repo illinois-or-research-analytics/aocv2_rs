@@ -7,6 +7,7 @@ use anyhow::{bail, Ok};
 use itertools::Itertools;
 use ordered_float::NotNan;
 use rayon::prelude::*;
+use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{hash_set, BTreeMap, BTreeSet},
@@ -631,6 +632,43 @@ pub struct Clustering {
     pub clusters: BTreeMap<usize, Cluster>,
     /// "attention", defined as the minimum sized cluster that we want to focus/augment on
     pub attention: usize,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct PackedClustering {
+    pub clusters: BTreeMap<usize, RoaringBitmap>,
+}
+
+impl From<Clustering> for PackedClustering {
+    fn from(clustering: Clustering) -> Self {
+        let mut clusters = BTreeMap::new();
+        for (cluster_id, cluster) in clustering.clusters {
+            let bitmap = cluster
+                .core_nodes
+                .into_iter()
+                .map(|it| it as u32)
+                .collect::<RoaringBitmap>();
+            clusters.insert(cluster_id, bitmap);
+        }
+        PackedClustering { clusters }
+    }
+}
+
+impl From<PackedClustering> for Clustering {
+    fn from(packed_clustering: PackedClustering) -> Self {
+        let mut clusters = BTreeMap::new();
+        for (cluster_id, bitmap) in packed_clustering.clusters {
+            let cluster = Cluster {
+                core_nodes: bitmap.into_iter().map(|it| it as usize).collect(),
+                periphery_nodes: AHashSet::new(),
+            };
+            clusters.insert(cluster_id, cluster);
+        }
+        Clustering {
+            clusters,
+            attention: 0,
+        }
+    }
 }
 
 impl Clustering {

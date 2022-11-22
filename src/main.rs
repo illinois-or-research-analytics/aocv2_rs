@@ -10,6 +10,7 @@ pub mod misc;
 pub mod quality;
 pub mod utils;
 use std::collections::BTreeMap;
+use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{BufRead, BufWriter};
 use std::rc::Rc;
@@ -88,6 +89,8 @@ enum SubCommand {
         /// Path to the edgelist graph
         #[clap(short, long)]
         graph: PathBuf,
+        #[clap(long)]
+        clustering: Option<PathBuf>,
         /// Output path for the preprocessed graph, recommended suffix is `.bincode.lz4`
         #[clap(short, long)]
         output: PathBuf,
@@ -301,16 +304,27 @@ fn main() -> anyhow::Result<()> {
             info!("Clusters augmented in {:?}", now.elapsed());
             clustering.write_file(&graph, &output, legacy_cid_nid_order)?;
         }
-        SubCommand::Pack { graph, mut output } => {
-            if !output.ends_with(".bincode.lz4") {
+        SubCommand::Pack {
+            graph: input,
+            clustering,
+            mut output,
+        } => {
+            if let Some("lz4") = output.extension().map(|it| it.to_str().unwrap()) {
+            } else {
                 output.set_extension("bincode.lz4");
                 warn!(
                     "Output file does not end with .bincode.lz4, changing it to {:?}",
                     output
                 );
             }
-            let graph = Graph::parse_edgelist(&graph)?;
-            utils::write_compressed_bincode(output, &graph)?;
+            if let Some(clustering) = clustering {
+                let graph = Graph::parse_from_file(&input)?;
+                let clus = Clustering::parse_from_file(&graph, &clustering, false)?;
+                utils::write_compressed_bincode(output, &PackedClustering::from(clus))?;
+            } else {
+                let graph = Graph::parse_edgelist(&input)?;
+                utils::write_compressed_bincode(output, &graph)?;
+            }
         }
         SubCommand::Stats {
             graph,

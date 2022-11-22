@@ -257,7 +257,6 @@ impl ClusteringHandle<true> {
         let k = scoped_clusters.len();
         let covered_nodes = self.covered_nodes.len() as u32;
         debug!("covered nodes: {}", covered_nodes);
-        // let acc = &graph.acc_num_edges;
         let covered_edges = graph
             .each_edge()
             .par_bridge()
