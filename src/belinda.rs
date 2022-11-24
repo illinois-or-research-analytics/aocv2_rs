@@ -363,7 +363,7 @@ impl ClusteringHandle<true> {
                     })
                     .clone()
             } else {
-                clusters.values().map(|it| it.m).sum()
+                scoped_clusters.iter().map(|it| it.m).sum()
             }
         });
         *covered_edges
