@@ -1,5 +1,4 @@
 use std::{
-    borrow::BorrowMut,
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
     sync::{atomic::AtomicU32, Arc, Mutex},
@@ -13,7 +12,6 @@ use rayon::prelude::{
     ParallelBridge, ParallelIterator,
 };
 use roaring::{MultiOps, RoaringBitmap, RoaringTreemap};
-use tracing::debug;
 
 use crate::{
     quality::DistributionSummary,
