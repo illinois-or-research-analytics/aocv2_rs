@@ -2,7 +2,7 @@ use std::{
     borrow::BorrowMut,
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{atomic::AtomicU32, Arc, Mutex},
 };
 
 use ahash::AHashMap;
@@ -10,7 +10,7 @@ use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use rayon::prelude::{
     FromParallelIterator, IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
-    ParallelIterator,
+    ParallelBridge, ParallelIterator,
 };
 use roaring::{MultiOps, RoaringBitmap, RoaringTreemap};
 use tracing::debug;
@@ -294,17 +294,19 @@ impl ClusteringHandle<true> {
             .map(|it| clus.clusters[&it].nodes.clone())
             .collect();
         let covered_nodes = covered_nodes.union();
-        let mut node_multiplicity = vec![0u32; clus.graph.graph.n()];
-        for cid in cluster_ids.iter().map(|it| clus.clusters.get(&it).unwrap()) {
-            for n in cid.nodes.iter() {
-                node_multiplicity[n as usize] += 1;
-            }
-        }
-        for i in 0..node_multiplicity.len() {
-            if node_multiplicity[i] == 0 {
-                node_multiplicity[i] = 1;
-            }
-        }
+        let node_multiplicity = (0..clus.graph.graph.n())
+            .map(|_| AtomicU32::new(0))
+            .collect_vec();
+        cluster_ids
+            .iter()
+            .par_bridge()
+            .map(|it| clus.clusters.get(&it).unwrap())
+            .for_each(|cid| {
+                for n in cid.nodes.iter() {
+                    node_multiplicity[n as usize]
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
+            });
         let num_covered = covered_nodes.len();
         let sum_cluster_length = cluster_ids
             .iter()
@@ -315,7 +317,10 @@ impl ClusteringHandle<true> {
             clustering: clus,
             cluster_ids,
             covered_nodes,
-            node_multiplicity,
+            node_multiplicity: node_multiplicity
+                .into_iter()
+                .map(|it| it.into_inner())
+                .collect(),
             is_overlapping: num_covered < sum_cluster_length,
             has_singletons,
             num_covered_edges: OnceCell::new(),
@@ -367,11 +372,12 @@ impl ClusteringHandle<true> {
     }
 
     pub fn get_covered_nodes(&self) -> u32 {
-        self.covered_nodes.len() as u32 + if self.has_singletons {
-            self.clustering.singleton_clusters.len() as u32
-        } else {
-            0
-        }
+        self.covered_nodes.len() as u32
+            + if self.has_singletons {
+                self.clustering.singleton_clusters.len() as u32
+            } else {
+                0
+            }
     }
 
     pub fn stats(&self) -> GraphStats {
