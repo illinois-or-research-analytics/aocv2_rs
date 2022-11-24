@@ -6,7 +6,6 @@ use std::{
 };
 
 use ahash::AHashMap;
-use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use rayon::prelude::{
@@ -367,6 +366,14 @@ impl ClusteringHandle<true> {
         *covered_edges
     }
 
+    pub fn get_covered_nodes(&self) -> u32 {
+        self.covered_nodes.len() as u32 + if self.has_singletons {
+            self.clustering.singleton_clusters.len() as u32
+        } else {
+            0
+        }
+    }
+
     pub fn stats(&self) -> GraphStats {
         let clusters = &self.clustering.clusters;
         let graph = &self.graph.graph;
@@ -376,7 +383,6 @@ impl ClusteringHandle<true> {
             .map(|k| clusters.get(&k).unwrap())
             .collect_vec();
         let k = scoped_clusters.len();
-        let covered_nodes = self.covered_nodes.len() as u32;
         let covered_edges = self.get_covered_edges();
         let mut statistics_type = vec![
             StatisticsType::Mcd,
@@ -431,7 +437,7 @@ impl ClusteringHandle<true> {
         }));
         GraphStats {
             num_clusters: k as u32,
-            covered_nodes: covered_nodes + if self.has_singletons {self.clustering.singleton_clusters.len() as u32} else {0},
+            covered_nodes: self.get_covered_nodes(),
             covered_edges: covered_edges as u64,
             total_nodes: graph.n() as u32,
             total_edges: graph.m() as u64,
