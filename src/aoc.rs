@@ -457,20 +457,16 @@ pub fn augment_clusters_local_expand<
                         *neighborhood_multiplicities.entry(*n).or_insert(0) += 1;
                     }
                 });
+            // the secondary key for the priority is only for determinism across different runs
             let mut pq: PriorityQueue<usize, Reverse<(usize, usize)>> = PriorityQueue::new();
-            neighborhood_multiplicities.iter().for_each(|(n, m)| {
+            neighborhood_multiplicities.iter().for_each(|(n, deg)| {
                 if candidates.contains(n) {
-                    pq.push(*n, Reverse((*m, *n)));
+                    pq.push(*n, Reverse((*deg, *n)));
                 }
             });
-            // let mut considered: AHashSet<usize> = AHashSet::new();
             let mut graveyard: AHashMap<usize, usize> = AHashMap::new();
-            let stopping_criterion = 0usize;
-            while let Some((n, Reverse((m, _)))) = pq.pop() {
+            while let Some((n, Reverse((deg, _)))) = pq.pop() {
                 let cand = &bg.nodes[n];
-                if m <= stopping_criterion {
-                    break;
-                }
                 if augmenter.query_and_admit(bg, cluster, cand) {
                     cand.edges
                         .iter()
@@ -487,7 +483,7 @@ pub fn augment_clusters_local_expand<
                             }
                         });
                 } else {
-                    graveyard.insert(n, m);
+                    graveyard.insert(n, deg);
                     let can_earlystop = X::Augmenter::allows_earlystopping();
                     if can_earlystop {
                         break;
@@ -569,7 +565,11 @@ mod tests {
     use super::{
         parse_aoc_config, AugmentByCpm, AugmentByDensityThreshold, Augmenter, AugmentingConfig,
     };
-    use crate::{aoc::AocConfig, Cluster, DefaultGraph, Graph};
+    use crate::{
+        aoc::AocConfig,
+        generators::{GraphGenerator, LinkedListGraphGenerator},
+        Cluster, DefaultGraph, Graph,
+    };
 
     #[test]
     pub fn edge_density_augmenter_makes_sense() -> anyhow::Result<()> {
@@ -613,6 +613,20 @@ mod tests {
         assert!(!augmenter.query_and_admit(&g, &mut c, g.node_from_label(3)));
         assert_eq!(3, c.size());
         assert_eq!(g.cpm_of(&c.all(), r), augmenter.cpm());
+        Ok(())
+    }
+
+    #[test]
+    pub fn resolution_limit_cpm_augment() -> anyhow::Result<()> {
+        let mut gen = LinkedListGraphGenerator::new(20);
+        let g: DefaultGraph = gen.gen();
+        let r = 0.01;
+        let augment_config = AugmentByCpm { resolution: r };
+        let mut c = Cluster::from_iter(0..12);
+        let mut augmenter = augment_config.augmenter(&g, &c);
+        for i in 12..=19 {
+            assert!(augmenter.query_and_admit(&g, &mut c, g.node_from_label(i)));
+        }
         Ok(())
     }
 

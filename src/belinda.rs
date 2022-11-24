@@ -1,12 +1,14 @@
 use std::{
+    borrow::BorrowMut,
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use ahash::AHashMap;
 use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
+use once_cell::sync::OnceCell;
 use rayon::prelude::{
     FromParallelIterator, IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
     ParallelIterator,
@@ -17,7 +19,7 @@ use tracing::debug;
 use crate::{
     quality::DistributionSummary,
     utils::{self, calc_cpm_resolution, calc_modularity_resolution, choose2},
-    Clustering, DefaultGraph, PackedClustering,
+    Clustering, DefaultGraph, Node, PackedClustering,
 };
 
 #[derive(Debug, Clone)]
@@ -47,6 +49,7 @@ impl Default for ClusteringSource {
 pub struct EnrichedGraph {
     pub graph: DefaultGraph,
     acc_num_edges: Vec<u64>,
+    pub singletons: RoaringBitmap,
 }
 
 impl EnrichedGraph {
@@ -55,9 +58,14 @@ impl EnrichedGraph {
         for i in 0..graph.n() {
             acc[i + 1] = acc[i] + graph.nodes[i].degree() as u64;
         }
+        let bitset = (0..graph.n() as u32)
+            .into_iter()
+            .filter(|it| graph.nodes[*it as usize].degree() == 1)
+            .collect();
         EnrichedGraph {
             graph,
             acc_num_edges: acc,
+            singletons: bitset,
         }
     }
 }
@@ -73,6 +81,17 @@ pub struct RichCluster {
 }
 
 impl RichCluster {
+    pub fn from_single_node(graph: &DefaultGraph, node_id: usize) -> RichCluster {
+        let node = &graph.nodes[node_id];
+        RichCluster {
+            nodes: [node_id as u32].into_iter().collect(),
+            n: 1,
+            m: 0,
+            c: node.degree() as u64,
+            mcd: 0,
+            vol: node.degree() as u64,
+        }
+    }
     pub fn load_from_bitmap(g: &DefaultGraph, nodes: RoaringBitmap) -> Self {
         let n = nodes.len() as u64;
         let nodeset: RoaringBitmap = nodes;
@@ -115,24 +134,30 @@ impl RichCluster {
 
 pub struct RichClustering<const O: bool> {
     pub graph: Arc<EnrichedGraph>,
-    pub clusters: BTreeMap<u64, RichCluster>,
+    pub clusters: BTreeMap<u32, RichCluster>,
+    pub singleton_clusters: Vec<RichCluster>,
+    pub cover: RoaringBitmap,
+    pub singleton_mask: RoaringBitmap,
     pub source: ClusteringSource,
-    pub node_covers: Vec<RoaringBitmap>,
+    pub edge_coverage_cache: Arc<Mutex<AHashMap<BTreeSet<u32>, u64>>>,
 }
 
 pub struct ClusteringHandle<const O: bool> {
     pub graph: Arc<EnrichedGraph>,
     pub clustering: Arc<RichClustering<O>>,
-    pub cluster_ids: BTreeSet<u64>,
+    pub cluster_ids: RoaringBitmap,
     pub covered_nodes: RoaringBitmap,
     pub node_multiplicity: Vec<u32>,
+    pub is_overlapping: bool,
+    pub has_singletons: bool,
+    pub num_covered_edges: OnceCell<u64>,
 }
 
 impl ClusteringHandle<true> {
     pub fn size_diff(&self, rhs: &RichClustering<true>) -> (u32, SummarizedDistribution) {
         let mut dist = vec![];
         for (id, cluster) in &self.clustering.clusters {
-            if self.cluster_ids.contains(id) {
+            if self.cluster_ids.contains(*id as u32) {
                 dist.push((rhs.clusters[id].n as f64 - cluster.n as f64) / cluster.n as f64);
             }
         }
@@ -143,11 +168,11 @@ impl ClusteringHandle<true> {
 
 impl RichClustering<true> {
     pub fn universe_handle(clus: Arc<RichClustering<true>>) -> ClusteringHandle<true> {
-        let mut cluster_ids = BTreeSet::new();
+        let mut cluster_ids = RoaringBitmap::new();
         for (id, _) in &clus.clusters {
-            cluster_ids.insert(*id);
+            cluster_ids.insert(*id as u32);
         }
-        ClusteringHandle::<true>::new(clus, cluster_ids)
+        ClusteringHandle::<true>::new(clus, cluster_ids, true)
     }
 }
 
@@ -164,21 +189,9 @@ impl<const O: bool> RichClustering<O> {
             let clusters = BTreeMap::from_par_iter(
                 clus.clusters
                     .into_par_iter()
-                    .progress_count(k as u64)
-                    .map(|(k, c)| (k as u64, RichCluster::load_from_bitmap(raw_graph, c))),
+                    .map(|(k, c)| (k as u32, RichCluster::load_from_bitmap(raw_graph, c))),
             );
-            let mut node_covers = vec![RoaringBitmap::new(); graph.graph.n()];
-            for (cid, k) in clusters.iter() {
-                for n in k.nodes.iter() {
-                    node_covers[n as usize].insert(*cid as u32);
-                }
-            }
-            Ok(RichClustering {
-                graph,
-                clusters,
-                source: ClusteringSource::Unknown,
-                node_covers,
-            })
+            Ok(Self::from_graph_and_clustering(graph, clusters))
         } else {
             Ok(Self::pack_from_clustering(
                 graph.clone(),
@@ -187,37 +200,50 @@ impl<const O: bool> RichClustering<O> {
         }
     }
 
+    pub fn from_graph_and_clustering(
+        graph: Arc<EnrichedGraph>,
+        clusters: BTreeMap<u32, RichCluster>,
+    ) -> RichClustering<O> {
+        let raw_graph = &graph.graph;
+        let cover = clusters
+            .values()
+            .map(|it| it.nodes.clone())
+            .collect::<Vec<_>>()
+            .union();
+        let mut singleton_mask = RoaringBitmap::new();
+        singleton_mask.insert_range(0..(raw_graph.n() as u32));
+        singleton_mask -= &cover;
+        RichClustering {
+            graph: graph.clone(),
+            clusters,
+            source: ClusteringSource::Unknown,
+            singleton_clusters: singleton_mask
+                .iter()
+                .map(|it| RichCluster::from_single_node(raw_graph, it as usize))
+                .collect(),
+            cover,
+            singleton_mask,
+            edge_coverage_cache: Arc::new(Mutex::new(AHashMap::new())),
+        }
+    }
+
     pub fn pack_from_clustering(graph: Arc<EnrichedGraph>, clus: Clustering) -> RichClustering<O> {
         let k = clus.clusters.len();
         let raw_graph = &graph.graph;
-        let clusters =
-            BTreeMap::from_par_iter(clus.clusters.into_par_iter().progress_count(k as u64).map(
-                |(k, c)| {
-                    (
-                        k as u64,
-                        RichCluster::load_from_slice(
-                            raw_graph,
-                            &c.core_nodes
-                                .iter()
-                                .cloned()
-                                .map(|it| it as u32)
-                                .collect_vec(),
-                        ),
-                    )
-                },
-            ));
-        let mut node_covers = vec![RoaringBitmap::new(); graph.graph.n()];
-        for (cid, k) in clusters.iter() {
-            for n in k.nodes.iter() {
-                node_covers[n as usize].insert(*cid as u32);
-            }
-        }
-        RichClustering {
-            graph,
-            clusters,
-            source: ClusteringSource::Unknown,
-            node_covers,
-        }
+        let clusters = BTreeMap::from_par_iter(clus.clusters.into_par_iter().map(|(k, c)| {
+            (
+                k as u32,
+                RichCluster::load_from_slice(
+                    raw_graph,
+                    &c.core_nodes
+                        .iter()
+                        .cloned()
+                        .map(|it| it as u32)
+                        .collect_vec(),
+                ),
+            )
+        }));
+        Self::from_graph_and_clustering(graph, clusters)
     }
 }
 
@@ -259,14 +285,18 @@ pub struct GraphStats {
 }
 
 impl ClusteringHandle<true> {
-    pub fn new(clus: Arc<RichClustering<true>>, cluster_ids: BTreeSet<u64>) -> Self {
+    pub fn new(
+        clus: Arc<RichClustering<true>>,
+        cluster_ids: RoaringBitmap,
+        has_singletons: bool,
+    ) -> Self {
         let covered_nodes: Vec<_> = cluster_ids
             .iter()
-            .map(|&it| clus.clusters[&it].nodes.clone())
+            .map(|it| clus.clusters[&it].nodes.clone())
             .collect();
         let covered_nodes = covered_nodes.union();
         let mut node_multiplicity = vec![0u32; clus.graph.graph.n()];
-        for cid in cluster_ids.iter().map(|it| clus.clusters.get(it).unwrap()) {
+        for cid in cluster_ids.iter().map(|it| clus.clusters.get(&it).unwrap()) {
             for n in cid.nodes.iter() {
                 node_multiplicity[n as usize] += 1;
             }
@@ -276,53 +306,78 @@ impl ClusteringHandle<true> {
                 node_multiplicity[i] = 1;
             }
         }
+        let num_covered = covered_nodes.len();
+        let sum_cluster_length = cluster_ids
+            .iter()
+            .map(|it| clus.clusters[&it].nodes.len())
+            .sum::<u64>();
         ClusteringHandle {
             graph: clus.graph.clone(),
             clustering: clus,
             cluster_ids,
             covered_nodes,
             node_multiplicity,
+            is_overlapping: num_covered < sum_cluster_length,
+            has_singletons,
+            num_covered_edges: OnceCell::new(),
         }
     }
+
+    pub fn get_covered_edges(&self) -> u64 {
+        let covered_edges = self.num_covered_edges.get_or_init(|| {
+            let clusters = &self.clustering.clusters;
+            let scoped_clusters = self
+                .cluster_ids
+                .iter()
+                .map(|k| clusters.get(&k).unwrap())
+                .collect_vec();
+            let graph = &self.graph.graph;
+            if self.is_overlapping {
+                let mut hm = self.clustering.edge_coverage_cache.lock().unwrap();
+                hm.entry(self.cluster_ids.iter().collect())
+                    .or_insert_with(|| {
+                        let acc = &self.graph.acc_num_edges;
+                        let unioned_edges: Vec<RoaringTreemap> = scoped_clusters
+                            .par_iter()
+                            .map(|c| {
+                                let tm = RoaringTreemap::from_sorted_iter(c.nodes.iter().flat_map(
+                                    |u| {
+                                        let edges = &graph.nodes[u as usize].edges;
+                                        let shift = acc[u as usize];
+                                        edges.iter().enumerate().filter_map(move |(offset, &v)| {
+                                            if c.nodes.contains(v as u32) {
+                                                Some(shift + offset as u64)
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                    },
+                                ))
+                                .unwrap();
+                                tm
+                            })
+                            .collect();
+                        (unioned_edges.union().len() / 2) as u64
+                    })
+                    .clone()
+            } else {
+                clusters.values().map(|it| it.m).sum()
+            }
+        });
+        *covered_edges
+    }
+
     pub fn stats(&self) -> GraphStats {
         let clusters = &self.clustering.clusters;
         let graph = &self.graph.graph;
-        let _labels = &self.clustering.node_covers;
-        let _clusters_map: RoaringBitmap = self.cluster_ids.iter().map(|it| *it as u32).collect();
         let scoped_clusters = self
             .cluster_ids
             .iter()
-            .map(|k| clusters.get(k).unwrap())
+            .map(|k| clusters.get(&k).unwrap())
             .collect_vec();
         let k = scoped_clusters.len();
         let covered_nodes = self.covered_nodes.len() as u32;
-        debug!("covered nodes: {}", covered_nodes);
-        let covered_edges = if covered_nodes as u64 >= clusters.values().map(|it| it.nodes.len()).sum::<u64>() {
-            clusters.values().map(|it| it.m).sum()
-        } else {
-            let acc = &self.graph.acc_num_edges;
-            let unioned_edges: Vec<RoaringTreemap> = scoped_clusters
-                .par_iter()
-                .progress_count(k as u64)
-                .map(|c| {
-                    let tm = RoaringTreemap::from_sorted_iter(c.nodes.iter().flat_map(|u| {
-                        let edges = &graph.nodes[u as usize].edges;
-                        let shift = acc[u as usize];
-                        edges.iter().enumerate().filter_map(move |(offset, &v)| {
-                            if c.nodes.contains(v as u32) {
-                                Some(shift + offset as u64)
-                            } else {
-                                None
-                            }
-                        })
-                    }))
-                    .unwrap();
-                    tm
-                })
-                .collect();
-            (unioned_edges.union().len() / 2) as u64
-        };
-
+        let covered_edges = self.get_covered_edges();
         let mut statistics_type = vec![
             StatisticsType::Mcd,
             StatisticsType::Size,
@@ -345,7 +400,13 @@ impl ClusteringHandle<true> {
         let statistics = AHashMap::from_iter(statistics_type.into_iter().map(|t| {
             (t.clone(), {
                 let c: Vec<f64> = scoped_clusters
-                    .par_iter()
+                    .clone()
+                    .into_par_iter()
+                    .chain(if self.has_singletons {
+                        self.clustering.singleton_clusters.par_iter()
+                    } else {
+                        [].par_iter()
+                    })
                     .map(|c| match t.clone() {
                         StatisticsType::Mcd => c.mcd as f64,
                         StatisticsType::Cpm => {

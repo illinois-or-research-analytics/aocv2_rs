@@ -35,6 +35,7 @@ comfy-table = "6.1.2"
 roaring = { version = "0.10.1", features = ["serde"]}
 strum_macros = "0.24"
 strum = { version = "0.24", features = ["derive"] }
+once_cell = "1.16.0"
 
 [build-dependencies]
 shadow-rs = "0.11.0"
