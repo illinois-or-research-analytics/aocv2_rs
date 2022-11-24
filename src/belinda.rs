@@ -431,7 +431,7 @@ impl ClusteringHandle<true> {
         }));
         GraphStats {
             num_clusters: k as u32,
-            covered_nodes,
+            covered_nodes: covered_nodes + if self.has_singletons {self.clustering.singleton_clusters.len() as u32} else {0},
             covered_edges: covered_edges as u64,
             total_nodes: graph.n() as u32,
             total_edges: graph.m() as u64,
