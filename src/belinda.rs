@@ -70,6 +70,7 @@ impl EnrichedGraph {
 #[derive(Debug, Clone)]
 pub struct RichCluster {
     pub nodes: RoaringBitmap,
+    pub edges: OnceCell<RoaringTreemap>,
     pub n: u64,
     pub m: u64,
     pub c: u64,
@@ -82,6 +83,7 @@ impl RichCluster {
         let node = &graph.nodes[node_id];
         RichCluster {
             nodes: [node_id as u32].into_iter().collect(),
+            edges: OnceCell::new(),
             n: 1,
             m: 0,
             c: node.degree() as u64,
@@ -116,6 +118,7 @@ impl RichCluster {
         m /= 2;
         RichCluster {
             nodes: nodeset,
+            edges: OnceCell::new(),
             n,
             m,
             c,
@@ -339,24 +342,27 @@ impl ClusteringHandle<true> {
                 hm.entry(self.cluster_ids.iter().collect())
                     .or_insert_with(|| {
                         let acc = &self.graph.acc_num_edges;
-                        let unioned_edges: Vec<RoaringTreemap> = scoped_clusters
+                        let unioned_edges: Vec<&RoaringTreemap> = scoped_clusters
                             .par_iter()
                             .map(|c| {
-                                let tm = RoaringTreemap::from_sorted_iter(c.nodes.iter().flat_map(
-                                    |u| {
-                                        let edges = &graph.nodes[u as usize].edges;
-                                        let shift = acc[u as usize];
-                                        edges.iter().enumerate().filter_map(move |(offset, &v)| {
-                                            if c.nodes.contains(v as u32) {
-                                                Some(shift + offset as u64)
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                    },
-                                ))
-                                .unwrap();
-                                tm
+                                let r = c.edges.get_or_init(|| {
+                                    let tm = RoaringTreemap::from_sorted_iter(c.nodes.iter().flat_map(
+                                        |u| {
+                                            let edges = &graph.nodes[u as usize].edges;
+                                            let shift = acc[u as usize];
+                                            edges.iter().enumerate().filter_map(move |(offset, &v)| {
+                                                if c.nodes.contains(v as u32) {
+                                                    Some(shift + offset as u64)
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                        },
+                                    ))
+                                    .unwrap();
+                                    tm
+                                });
+                                r
                             })
                             .collect();
                         (unioned_edges.union().len() / 2) as u64
