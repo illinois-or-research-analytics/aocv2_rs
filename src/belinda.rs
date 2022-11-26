@@ -45,7 +45,7 @@ impl Default for ClusteringSource {
 
 pub struct EnrichedGraph {
     pub graph: DefaultGraph,
-    acc_num_edges: Vec<u64>,
+    pub acc_num_edges: Vec<u64>,
     pub singletons: RoaringBitmap,
 }
 
