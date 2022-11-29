@@ -346,19 +346,21 @@ impl ClusteringHandle<true> {
                             .par_iter()
                             .map(|c| {
                                 let r = c.edges.get_or_init(|| {
-                                    let tm = RoaringTreemap::from_sorted_iter(c.nodes.iter().flat_map(
-                                        |u| {
+                                    let tm = RoaringTreemap::from_sorted_iter(
+                                        c.nodes.iter().flat_map(|u| {
                                             let edges = &graph.nodes[u as usize].edges;
                                             let shift = acc[u as usize];
-                                            edges.iter().enumerate().filter_map(move |(offset, &v)| {
-                                                if c.nodes.contains(v as u32) {
-                                                    Some(shift + offset as u64)
-                                                } else {
-                                                    None
-                                                }
-                                            })
-                                        },
-                                    ))
+                                            edges.iter().enumerate().filter_map(
+                                                move |(offset, &v)| {
+                                                    if c.nodes.contains(v as u32) {
+                                                        Some(shift + offset as u64)
+                                                    } else {
+                                                        None
+                                                    }
+                                                },
+                                            )
+                                        }),
+                                    )
                                     .unwrap();
                                     tm
                                 });

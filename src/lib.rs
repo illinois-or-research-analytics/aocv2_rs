@@ -1,3 +1,4 @@
+pub mod alg;
 pub mod aoc;
 pub mod base;
 pub mod belinda;
