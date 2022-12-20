@@ -293,6 +293,9 @@ impl Graph<Node> {
             let to = parts.next().ok_or_else(|| anyhow::anyhow!("missing to"))?;
             let from_id = graph.request(from.parse()?);
             let to_id = graph.request(to.parse()?);
+            if from_id == to_id {
+                continue;
+            }
             graph.nodes[from_id].add_out_edge(to_id);
             graph.nodes[to_id].add_in_edge(from_id);
         }
